@@ -267,6 +267,7 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 			slog.Error("media disconnect", "error", e)
 		}
 		delete(s.clients, p.user.ID)
+		s.cleanupTemporary(p.user.ChannelID)
 		s.broadcast("USER_DISCONNECTED", map[string]string{"id": p.user.ID})
 		s.mu.Unlock()
 	}()

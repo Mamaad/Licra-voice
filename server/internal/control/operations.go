@@ -53,7 +53,9 @@ func (s *Server) operation(ctx context.Context, p *client, m protocol.Envelope) 
 			s.sendError(p, id, "MEDIA_UNAVAILABLE")
 			return
 		}
+		oldChannel := p.user.ChannelID
 		p.user.ChannelID = ""
+		s.cleanupTemporary(oldChannel)
 		s.send(p, "VOICE_LEFT", id, nil)
 		s.broadcast("USER_MOVED", p.user)
 		s.send(p, "ACK", id, nil)
@@ -163,6 +165,15 @@ func (s *Server) operation(ctx context.Context, p *client, m protocol.Envelope) 
 				invalid()
 				return
 			}
+		}
+		permanent := map[string]bool{}
+		for _, c := range chs {
+			permanent[c.ID] = c.IsPermanent
+		}
+		permanent[v.ID] = v.IsPermanent
+		if s.permanentUnderTemporary(parents, permanent) {
+			invalid()
+			return
 		}
 		var hash any
 		if v.Password != nil && *v.Password != "" {
@@ -444,9 +455,13 @@ func (s *Server) join(ctx context.Context, actor, target *client, id, ch, passwo
 		s.sendError(actor, id, "MEDIA_UNAVAILABLE")
 		return
 	}
+	oldChannel := target.user.ChannelID
 	target.user.ChannelID = ch
 	target.voiceContext, target.voiceCancel = context.WithCancel(context.Background())
 	s.send(target, "VOICE_JOIN", id, map[string]any{"token": token, "signaling_path": "/livekit", "channel_id": ch, "audio_profile": c.AudioProfile, "can_speak": !target.user.ServerMuted && s.allowed(target.user.Fingerprint, "voice.speak", ch)})
 	s.broadcast("USER_MOVED", target.user)
 	s.send(actor, "ACK", id, nil)
+	if oldChannel != ch {
+		s.cleanupTemporary(oldChannel)
+	}
 }

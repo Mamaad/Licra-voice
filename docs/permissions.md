@@ -34,3 +34,8 @@ L’écran Administration permet de créer/éditer/supprimer des rôles, attribu
 à une identité connectée ou connue hors ligne, choisir le scope et appliquer
 des exceptions ALLOW/DENY/INHERIT. Les fingerprints restent complets : les
 abréviations d’affichage ne servent jamais de clé d’autorisation.
+
+Un salon non permanent est supprimé lorsque son dernier utilisateur quitte et
+qu’il n’a plus de sous-salons, ainsi qu’au démarrage du daemon. Un salon
+permanent ne peut pas être placé sous un ancêtre temporaire. Les commandes
+CLI n’effacent pas les salons temporaires d’un daemon déjà en cours.

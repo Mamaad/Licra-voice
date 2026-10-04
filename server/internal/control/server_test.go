@@ -242,3 +242,28 @@ func TestPermissionRevocation(t *testing.T) {
 		t.Fatal(snapshot)
 	}
 }
+
+func TestTemporaryChannels(t *testing.T) {
+	a, h := setup(t)
+	token, _ := a.AdminToken(false)
+	c, _ := connectTest(t, h)
+	write(context.Background(), c, protocol.Message("CLAIM_OWNER", "claim", map[string]string{"token": token}))
+	receive(t, c, "ACK")
+	write(context.Background(), c, protocol.Message("CREATE_CHANNEL", "create", map[string]any{"name": "Temporary", "audio_profile": "standard", "is_permanent": false}))
+	m := receive(t, c, "CHANNEL_CREATED")
+	var ch Channel
+	json.Unmarshal(m.Payload, &ch)
+	receive(t, c, "ACK")
+	write(context.Background(), c, protocol.Message("JOIN_CHANNEL", "join", map[string]string{"channel_id": ch.ID}))
+	receive(t, c, "VOICE_JOIN")
+	receive(t, c, "ACK")
+	write(context.Background(), c, protocol.Message("LEAVE_CHANNEL", "leave", nil))
+	receive(t, c, "CHANNEL_DELETED")
+	receive(t, c, "ACK")
+	a.mu.Lock()
+	_, exists := a.channel(ch.ID)
+	a.mu.Unlock()
+	if exists {
+		t.Fatal("empty temporary channel retained")
+	}
+}

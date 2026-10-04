@@ -179,6 +179,28 @@ fn dpapi(data: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
 mod tests {
     use super::*;
     #[test]
+    fn persistent_identity() {
+        let mut random = [0u8; 8];
+        OsRng.fill_bytes(&mut random);
+        let directory =
+            std::env::temp_dir().join(format!("licra-identity-{}", u64::from_le_bytes(random)));
+        fs::create_dir_all(&directory).expect("temp dir");
+        let path = directory.join("identity.dpapi");
+        let first = load(&path).expect("first identity");
+        let second = load(&path).expect("persistent identity");
+        assert_eq!(public(&first), public(&second));
+        #[cfg(windows)]
+        assert_ne!(
+            fs::read(&path).expect("read").as_slice(),
+            first.to_bytes().as_slice()
+        );
+        let replacement = SigningKey::generate(&mut OsRng);
+        store(&path, &replacement).expect("import replacement");
+        assert_eq!(public(&replacement), public(&load(&path).expect("reload")));
+        assert!(path.with_extension("previous").exists());
+        fs::remove_dir_all(directory).expect("cleanup");
+    }
+    #[test]
     fn encrypted_roundtrip() {
         let k = SigningKey::generate(&mut OsRng);
         let b = export(&k, "a sufficiently long passphrase").expect("export");

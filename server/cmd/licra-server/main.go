@@ -110,6 +110,9 @@ func run() error {
 		}
 		fmt.Fprintln(os.Stderr, "Initial administrator token (shown once): "+token)
 	}
+	if e = app.PruneTemporary(); e != nil {
+		return e
+	}
 	s := http.Server{Addr: fmt.Sprintf("%s:%d", c.Server.Bind, c.Server.BasePort), Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

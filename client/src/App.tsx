@@ -76,8 +76,8 @@ export function App() {
         className={"user " + (s.talking.includes(u.id) ? "speaking" : "")}
         draggable={
           u.id === s.self_id
-            ? !!s.channel_permissions[u.channel_id]?.["channel.move_self"]
-            : !!s.channel_permissions[u.channel_id]?.["channel.move_others"]
+            ? !!(s.channel_permissions[u.channel_id]?.["channel.move_self"] ?? s.permissions["channel.move_self"])
+            : !!(s.channel_permissions[u.channel_id]?.["channel.move_others"] ?? s.permissions["channel.move_others"])
         }
         onDragStart={(e) => e.dataTransfer.setData("text/plain", u.id)}
         onContextMenu={(e) => {
