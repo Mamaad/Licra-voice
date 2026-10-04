@@ -70,7 +70,7 @@ sur la room SDK ; les miniatures reçoivent une couche inférieure, le plein éc
 une couche supérieure. La mesure `small_view_encodings` confirme `q.active=true` et
 `h.active=false`, `f.active=false` : les couches inutilisées sont réellement
 suspendues en miniature. Les encodages inactifs et dimensions reçues sont visibles
-dans les diagnostics bruts ; la source synthétique 96×96 n’a qu’une couche.
+dans les diagnostics bruts ; la source synthétique de très faible résolution n’a qu’une couche.
 
 ## Mesures reproductibles
 
@@ -112,7 +112,7 @@ la résolution effectivement transmise.
 
 **60 FPS n’est pas validé physiquement** : la source synthétique plafonne
 vers 20 FPS pour 1080p/1440p malgré les contraintes 30/60. Source est une
-source de test native 96×96, et ne valide pas un moniteur Windows 4K.
+source de test de très faible résolution (16×16 ici), et ne valide pas un moniteur Windows 4K.
 
 ## Tests et régressions corrigées
 
