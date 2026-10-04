@@ -1,0 +1,59 @@
+{
+  "environment": "Real UI/Go/SQLite/control WebSocket/LiveKit voice; deterministic IFrame API fixture, not a real YouTube decode",
+  "clients": 5,
+  "control_delay_client_5_ms": 200,
+  "drift_ms": [
+    -0.000048816204412105435,
+    0.00009763240882421087,
+    -0.10014647244815933,
+    -0.00009769200914888643,
+    12.350048840048089
+  ],
+  "steady_control_bytes_3s": [
+    {
+      "incoming": 0,
+      "outgoing": 0
+    },
+    {
+      "incoming": 0,
+      "outgoing": 0
+    },
+    {
+      "incoming": 0,
+      "outgoing": 0
+    },
+    {
+      "incoming": 0,
+      "outgoing": 0
+    },
+    {
+      "incoming": 0,
+      "outgoing": 0
+    }
+  ],
+  "total_youtube_control_bytes": [
+    {
+      "incoming": 18753,
+      "outgoing": 2592
+    },
+    {
+      "incoming": 12281,
+      "outgoing": 1200
+    },
+    {
+      "incoming": 9609,
+      "outgoing": 126
+    },
+    {
+      "incoming": 9603,
+      "outgoing": 126
+    },
+    {
+      "incoming": 8026,
+      "outgoing": 126
+    }
+  ],
+  "autoplay_blocked_and_current_position_after_activation": true,
+  "voice_and_chat_continued": true,
+  "limitations": "Physical WebView2 decode, ads and real YouTube CDN latency require separate validation"
+}

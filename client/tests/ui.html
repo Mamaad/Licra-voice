@@ -7,6 +7,7 @@ import * as control from '/src/control.ts';
 import * as voice from '/src/voice.ts';
 import * as screen from '/src/screen.ts';
 import * as chat from '/src/chat.ts';
+import * as youtube from '/src/youtube.ts';
 import * as chatUI from '/src/ChatPanel.tsx';
 import '/src/style.css';
 // Test-only replacement for native Ed25519/IPC; UI, control and audio remain production modules.
@@ -20,7 +21,7 @@ window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebvie
  if(cmd.startsWith('plugin:global-shortcut|')||cmd.startsWith('plugin:window|'))return;
  throw new Error('Unexpected native operation in UI verification: '+cmd);
 }};
-window.ui={store:useStore,control,voice,screen,chat,chatUI,events:[]};
-const NativeWebSocket=window.WebSocket;window.WebSocket=class extends NativeWebSocket{constructor(...args){super(...args);this.addEventListener("message",event=>{if(typeof event.data==='string')window.ui.events.push(JSON.parse(event.data).type);});}};
+window.ui={store:useStore,control,voice,screen,chat,chatUI,youtube,youtubeBytes:{incoming:0,outgoing:0},youtubeRequests:new Set(),events:[]};
+const NativeWebSocket=window.WebSocket;window.WebSocket=class extends NativeWebSocket{constructor(...args){super(...args);this.addEventListener("message",event=>{if(typeof event.data==='string'){const m=JSON.parse(event.data);window.ui.events.push(m.type);if(m.type.startsWith("YOUTUBE_")||window.ui.youtubeRequests.has(m.request_id)){window.ui.youtubeBytes.incoming+=new TextEncoder().encode(event.data).byteLength;if(m.type==="ACK"||m.type==="ERROR")window.ui.youtubeRequests.delete(m.request_id);}}});}send(value){if(typeof value==="string"){const m=JSON.parse(value);if(m.type?.startsWith("YOUTUBE_")){window.ui.youtubeBytes.outgoing+=new TextEncoder().encode(value).byteLength;window.ui.youtubeRequests.add(m.request_id);}}return super.send(value);}};
 createRoot(document.getElementById('root')).render(React.createElement(App));
 </script></body></html>

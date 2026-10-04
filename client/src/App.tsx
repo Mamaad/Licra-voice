@@ -26,7 +26,7 @@ import {
   type DropPosition,
 } from "./Shell";
 import { ChatPanel } from "./ChatPanel";
-import { ScreenPanel } from "./Screens";
+import { ChannelActivities } from "./YouTubePanel";
 import { useChat, openPrivate } from "./chat";
 import { ContextMenu } from "./ContextMenu";
 import { CLIENT_VERSION } from "./version";
@@ -433,7 +433,7 @@ export function App() {
                         </span>
                       </div>
                     </div>
-                    <ScreenPanel channelId={selected.id} />
+                    <ChannelActivities channelId={selected.id} />
                     <div className="conversation-layout">
                       <ChatPanel
                         key={chat.privatePeer?.fingerprint ?? selected.id}

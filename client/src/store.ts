@@ -84,7 +84,7 @@ export function applyEvent(type: string, p: any) {
       const selected = p.channels.some((c: any) => c.id === s.selected)
         ? s.selected
         : (p.channels[0]?.id ?? "");
-      s.set({ ...p, selected, status: "connected", error: "" });
+      s.set({ youtube: undefined, youtube_activity: null, ...p, selected, status: "connected", error: "" });
       break;
     case "USER_CONNECTED":
     case "USER_UPDATED":

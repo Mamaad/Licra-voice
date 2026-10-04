@@ -34,10 +34,17 @@ type ScreenConfig struct {
 	MaxHeight           int  `toml:"max_height" json:"max_height"`
 	MaxFPS              int  `toml:"max_fps" json:"max_fps"`
 }
+type YouTubeConfig struct {
+	Enabled           bool `toml:"enabled" json:"enabled"`
+	MaxQueue          int  `toml:"max_queue" json:"max_queue"`
+	CommandsPerMinute int  `toml:"commands_per_minute" json:"commands_per_minute"`
+	ChangesPerMinute  int  `toml:"changes_per_minute" json:"changes_per_minute"`
+}
 type Config struct {
-	Chat   ChatConfig   `toml:"chat" json:"chat"`
-	Screen ScreenConfig `toml:"screen_share" json:"screen_share"`
-	Server struct {
+	YouTube YouTubeConfig `toml:"youtube" json:"youtube"`
+	Chat    ChatConfig    `toml:"chat" json:"chat"`
+	Screen  ScreenConfig  `toml:"screen_share" json:"screen_share"`
+	Server  struct {
 		Name                 string `toml:"name" json:"name"`
 		Bind                 string `toml:"bind" json:"bind"`
 		BasePort             int    `toml:"base_port" json:"base_port"`
@@ -108,8 +115,9 @@ func Defaults() Config {
 	c.Security.HandshakeRateLimit = 10
 	c.Security.MaxChannels = 1000
 	c.Logging.Level = "info"
+	c.YouTube = YouTubeConfig{Enabled: true, MaxQueue: 100, CommandsPerMinute: 120, ChangesPerMinute: 10}
 	c.Chat = ChatConfig{MaxStoredMessages: 100000, MaxThreads: 10000, Enabled: true, HistoryEnabled: true, MaxMessageLength: 4000, MessagesPerSecond: 3, MessagesPerMinute: 60, EditsPerMinute: 30, TypingPerSecond: 2, ChannelHistoryLimit: 10000, PrivateHistoryLimit: 5000, RetentionDays: 90}
-	c.Screen = ScreenConfig{Enabled: true, MaxSharesPerChannel: 4, MaxBitrate: 8000000, MaxHeight: 2160, MaxFPS: 60}
+	c.Screen = ScreenConfig{Enabled: true, MaxSharesPerChannel: 4, MaxBitrate: 16000000, MaxHeight: 2160, MaxFPS: 60}
 	c.Turn.UDPPort = 3478
 	c.Turn.TLSPort = 5349
 	return c
@@ -134,6 +142,9 @@ func Load(path string) (Config, error) {
 	}
 	if c.Chat.MaxStoredMessages < 100 || c.Chat.MaxStoredMessages > 10000000 || c.Chat.MaxThreads < 1 || c.Chat.MaxThreads > 100000 || c.Chat.MaxMessageLength < 1 || c.Chat.MaxMessageLength > 8000 || c.Chat.MessagesPerSecond < 1 || c.Chat.MessagesPerSecond > 20 || c.Chat.MessagesPerMinute < 1 || c.Chat.MessagesPerMinute > 1000 || c.Chat.EditsPerMinute < 1 || c.Chat.EditsPerMinute > 1000 || c.Chat.TypingPerSecond < 1 || c.Chat.TypingPerSecond > 10 || c.Chat.ChannelHistoryLimit < 1 || c.Chat.ChannelHistoryLimit > 100000 || c.Chat.PrivateHistoryLimit < 1 || c.Chat.PrivateHistoryLimit > 100000 || c.Chat.RetentionDays < 1 || c.Chat.RetentionDays > 3650 {
 		return c, fmt.Errorf("invalid chat limits")
+	}
+	if c.YouTube.MaxQueue < 1 || c.YouTube.MaxQueue > 1000 || c.YouTube.CommandsPerMinute < 1 || c.YouTube.CommandsPerMinute > 1000 || c.YouTube.ChangesPerMinute < 1 || c.YouTube.ChangesPerMinute > 100 {
+		return c, fmt.Errorf("invalid YouTube limits")
 	}
 	if c.Screen.MaxSharesPerChannel < 1 || c.Screen.MaxSharesPerChannel > 20 || c.Screen.MaxBitrate < 100000 || c.Screen.MaxBitrate > 50000000 || c.Screen.MaxHeight < 360 || c.Screen.MaxHeight > 4320 || c.Screen.MaxFPS < 30 || c.Screen.MaxFPS > 60 {
 		return c, fmt.Errorf("invalid screen limits")

@@ -105,6 +105,39 @@ fn open_external(url: String) -> Result<(), String> {
 }
 fn main() {
     let result = tauri::Builder::default()
+        .setup(|app| {
+            #[cfg(windows)]
+            app.get_webview_window("main").ok_or("main webview missing")?.with_webview(|platform| {
+                unsafe {
+                    use webview2_com::{WebResourceRequestedEventHandler, CoTaskMemPWSTR};
+                    use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_WEB_RESOURCE_CONTEXT_DOCUMENT;
+                    use windows_core::{w, PWSTR};
+                    let setup = || -> windows_core::Result<()> {
+                        let core = platform.controller().CoreWebView2()?;
+                        core.AddWebResourceRequestedFilter(w!("https://www.youtube.com/embed/*"), COREWEBVIEW2_WEB_RESOURCE_CONTEXT_DOCUMENT)?;
+                        let handler = WebResourceRequestedEventHandler::create(Box::new(|_, args| {
+                            if let Some(args) = args {
+                                let request = args.Request()?;
+                                let mut uri = PWSTR::null();
+                                request.Uri(&mut uri)?;
+                                let uri = CoTaskMemPWSTR::from(uri).to_string();
+                                if let Ok(url) = tauri::Url::parse(&uri) {
+                                    if url.scheme() == "https" && url.host_str() == Some("www.youtube.com") && url.path().starts_with("/embed/") {
+                                        request.Headers()?.SetHeader(w!("Referer"), w!("https://org.licra.voice"))?;
+                                    }
+                                }
+                            }
+                            Ok(())
+                        }));
+                        let mut token = 0;
+                        core.add_WebResourceRequested(&handler, &mut token)?;
+                        Ok(())
+                    };
+                    if let Err(error) = setup() { eprintln!("YouTube app identification: {error}"); }
+                }
+            })?;
+            Ok(())
+        })
         .on_permission_request(|webview, kind| {
             use tauri::webview::{PermissionKind, PermissionResponse};
             let trusted = webview.label() == "main"

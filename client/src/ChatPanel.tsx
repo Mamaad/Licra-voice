@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useStore } from "./store";
 import { useChat, loadChat } from "./chat";
 import { request } from "./control";
+import { youtubeAction, parseYouTubeID, useYouTube } from "./youtube";
 import { ContextMenu } from "./ContextMenu";
 import { confirmDialog } from "./Modal";
 import { Avatar, Icon } from "./ui";
@@ -65,6 +66,7 @@ export function ChatPanel({
   peer?: { fingerprint: string; nickname: string };
   onClose?: () => void;
 }) {
+  const youtubeActivity = useYouTube((state) => state.activity);
   const s = useStore(),
     chat = useChat(),
     [thread, setThread] = useState(""),
@@ -334,6 +336,36 @@ export function ChatPanel({
                       <MessageText content={m.content} onError={report} />
                     )}
                   </p>
+                  {channelId &&
+                    !m.deleted_at &&
+                    s.users.find((u) => u.id === s.self_id)?.channel_id ===
+                      channelId &&
+                    s.youtube?.enabled &&
+                    (s.channel_permissions[channelId]?.[
+                      "youtube.change_video"
+                    ] ||
+                      ((!youtubeActivity?.video_id ||
+                        youtubeActivity.state === "STOPPED") &&
+                        s.channel_permissions[channelId]?.["youtube.start"])) &&
+                    [...m.content.matchAll(/https?:\/\/[^\s<>]+/gu)]
+                      .map((match) => parseYouTubeID(match[0]))
+                      .filter(
+                        (id, index, all) => id && all.indexOf(id) === index,
+                      )
+                      .map((id) => (
+                        <button
+                          key={id}
+                          className="chat-youtube-action"
+                          onClick={() => {
+                            useYouTube.setState({ preferred: "youtube" });
+                            void youtubeAction("YOUTUBE_START", {
+                              video: id,
+                            }).catch(report);
+                          }}
+                        >
+                          Regarder ensemble
+                        </button>
+                      ))}
                   {m.deleted_at && m.content && (
                     <small>Supprimé · visible pour la modération</small>
                   )}

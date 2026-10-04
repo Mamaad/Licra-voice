@@ -12,6 +12,7 @@ import (
 	"licra/server/internal/permissions"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -261,6 +262,15 @@ func (s *Server) permissionsUpdated() {
 			s.send(p, "KICK", "", map[string]string{"reason": "Server permission revoked"})
 		}
 	}
+	for ch := range s.youtube {
+		if _, ok := s.policy.Parents[ch]; !ok {
+			if t := s.youtubeTimers[ch]; t != nil {
+				t.Stop()
+			}
+			delete(s.youtubeTimers, ch)
+			delete(s.youtube, ch)
+		}
+	}
 	s.reconcileVoice()
 	s.reconcileScreens()
 	chs, _ := s.channels()
@@ -270,6 +280,7 @@ func (s *Server) permissionsUpdated() {
 			cm[c.ID] = s.permissionMap(p.user.Fingerprint, c.ID)
 		}
 		s.send(p, "PERMISSIONS_UPDATED", "", map[string]any{"permissions": s.permissionMap(p.user.Fingerprint, ""), "channel_permissions": cm})
+		s.sendYouTubeState(p)
 	}
 }
 func (s *Server) snapshot(p *client, id string) error {
@@ -288,7 +299,7 @@ func (s *Server) snapshot(p *client, id string) error {
 	for _, c := range chs {
 		cm[c.ID] = s.permissionMap(p.user.Fingerprint, c.ID)
 	}
-	s.send(p, "SNAPSHOT", id, map[string]any{"server": map[string]any{"name": s.Config.Server.Name, "id": s.ID, "bootstrap_available": s.bootstrapAvailable()}, "self_id": p.user.ID, "channels": chs, "users": s.users(), "roles": rs, "permissions": s.permissionMap(p.user.Fingerprint, ""), "channel_permissions": cm, "chat": s.Config.Chat, "screen": s.Config.Screen})
+	s.send(p, "SNAPSHOT", id, map[string]any{"server": map[string]any{"name": s.Config.Server.Name, "id": s.ID, "bootstrap_available": s.bootstrapAvailable()}, "self_id": p.user.ID, "channels": chs, "users": s.users(), "roles": rs, "permissions": s.permissionMap(p.user.Fingerprint, ""), "channel_permissions": cm, "chat": s.Config.Chat, "screen": s.Config.Screen, "youtube": s.Config.YouTube, "youtube_activity": s.visibleYouTube(p), "server_time": time.Now().UnixMilli()})
 	s.chatUnread(p)
 	s.sendScreenState(p)
 	return nil
@@ -374,5 +385,8 @@ func (s *Server) bootstrapAvailable() bool {
 }
 
 func defaultPermission(role, p string) bool {
+	if strings.HasPrefix(p, "youtube.") {
+		return p == "youtube.view" || role == "Owner" || role == "Administrator" || role == "Moderator" || role == "Member"
+	}
 	return role == "Owner" || role == "Administrator" || (role == "Moderator" && (p == "user.kick" || p == "voice.mute_others" || p == "channel.move_others" || p == "role.view" || p == "chat.channel.delete_others" || p == "chat.moderation.view_deleted" || p == "screen.stop_others")) || p == "server.view" || p == "channel.join" || p == "channel.move_self" || p == "voice.speak" || p == "screen.share" || p == "screen.watch" || p == "chat.channel.view" || p == "chat.channel.send" || p == "chat.channel.history" || p == "chat.channel.edit_own" || p == "chat.channel.delete_own" || p == "chat.private.send"
 }

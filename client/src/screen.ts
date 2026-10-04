@@ -195,7 +195,7 @@ export async function syncScreens(url: string) {
 export async function selectScreenCodec(
   width = 1920,
   height = 1080,
-  bitrate = 4000000,
+  bitrate = 8000000,
   framerate = 30,
 ): Promise<VideoCodec> {
   const codecs = RTCRtpSender.getCapabilities("video")?.codecs ?? [];
@@ -308,21 +308,21 @@ export async function startScreen(options: ScreenOptions, url: string) {
       h = settings.height ?? height;
     const max = Math.min(
       limits.max_bitrate,
-      Math.round((h / 1080) * (fps / 30) * 4000000),
+      Math.round((h / 1080) * (fps / 30) * 8000000),
     );
     const codec = await selectScreenCodec(w, h, max, fps);
     const layers = [
       new VideoPreset(
         640,
         Math.round((640 * h) / w),
-        Math.floor(Math.min(350000, max * 0.05)),
+        Math.floor(Math.min(700000, max * 0.05)),
         Math.min(15, fps),
         "low",
       ),
       new VideoPreset(
         1280,
         Math.round((1280 * h) / w),
-        Math.floor(Math.min(1400000, max * 0.25)),
+        Math.floor(Math.min(2800000, max * 0.25)),
         Math.min(30, fps),
         "low",
       ),

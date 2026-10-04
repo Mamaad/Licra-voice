@@ -1,3 +1,4 @@
+import { checkYouTube } from "./youtube.mjs";
 import { chromium } from "@playwright/test";
 import { spawn, execFileSync } from "node:child_process";
 import {
@@ -726,7 +727,10 @@ try {
     .getByRole("button", { name: "Plein écran" })
     .click();
   await page.waitForFunction(() => !!document.fullscreenElement);
-  await page.evaluate(() => document.exitFullscreen());
+  await page
+    .getByRole("button", { name: "Quitter le plein écran", exact: true })
+    .click();
+  await page.waitForFunction(() => !document.fullscreenElement);
   await page
     .locator(".screen-tile.focused")
     .getByRole("button", { name: "Grille", exact: true })
@@ -1059,6 +1063,17 @@ try {
     window.ui.screen.useScreens.getState().tracks.some((t) => !t.local),
   );
   console.log("Screen permission restoration PASS");
+  await checkYouTube({
+    page,
+    guest,
+    viewers,
+    browser,
+    channel,
+    chill,
+    base,
+    out,
+    root,
+  });
   const reconnectViewer = viewers[1];
   viewerNetwork = false;
   await reconnectViewer.context().setOffline(true);
@@ -1104,14 +1119,25 @@ try {
       throw e;
     });
   console.log("Control automatically reconnected");
-  await reconnectViewer.evaluate(
+  await reconnectViewer.waitForFunction(
     (id) =>
-      window.ui.control.request("JOIN_CHANNEL", {
-        channel_id: id,
-        password: "",
-      }),
+      window.ui.store
+        .getState()
+        .users.find((u) => u.id === window.ui.store.getState().self_id)
+        ?.channel_id === id,
     channel,
+    { timeout: 60000 },
   );
+  await reconnectViewer.waitForFunction(
+    () =>
+      window.ui.youtube.useYouTube.getState().activity?.video_id ===
+      "M7lc1UVf-VE",
+  );
+  await page.evaluate(() => window.ui.youtube.youtubeAction("YOUTUBE_STOP"));
+  for (const peer of [page, guest, ...viewers])
+    await peer.evaluate(() =>
+      window.ui.youtube.useYouTube.setState({ preferred: "screens" }),
+    );
   await reconnectViewer.waitForFunction(() =>
     window.ui.screen.useScreens.getState().tracks.some((t) => !t.local),
   );

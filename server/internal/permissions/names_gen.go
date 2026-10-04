@@ -45,4 +45,11 @@ var Names = []string{
 	"screen.share",
 	"screen.watch",
 	"screen.stop_others",
+	"youtube.view",
+	"youtube.start",
+	"youtube.control",
+	"youtube.seek",
+	"youtube.change_video",
+	"youtube.stop",
+	"youtube.queue_manage",
 }

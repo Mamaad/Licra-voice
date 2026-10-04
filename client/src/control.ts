@@ -4,6 +4,12 @@ import { parseAddress } from "./address.mjs";
 import { joinVoice, leaveVoice, syncVoicePermissions } from "./voice";
 import { applyChatEvent } from "./chat";
 import { screenEvent, syncScreens, closeScreens } from "./screen";
+import {
+  youtubeEvent,
+  syncYouTube,
+  clearYouTube,
+  sampleYouTubeClock,
+} from "./youtube";
 import type { Envelope } from "./types";
 import { CLIENT_VERSION, PROTOCOL_VERSION } from "./version";
 export { CLIENT_VERSION, PROTOCOL_VERSION };
@@ -13,6 +19,7 @@ let socket: WebSocket | undefined,
   retries = 0,
   timer: ReturnType<typeof setTimeout> | undefined;
 let last: { address: string; nickname: string } | undefined;
+let lastJoined: { channel_id: string; password: string } | undefined;
 const pending = new Map<
   string,
   {
@@ -38,6 +45,8 @@ const actions: Record<string, string> = {
   MUTE_USER: "Couper un utilisateur",
 };
 const codes: Record<string, string> = {
+  YOUTUBE_DISABLED: "YouTube désactivé par le serveur",
+  STALE_ACTIVITY: "L’activité a changé : réessayez votre action",
   CHAT_DISABLED: "Chat désactivé par le serveur",
   CHAT_STORAGE_LIMIT: "Nombre maximal de conversations atteint",
   SCREEN_DISABLED: "Partage d’écran désactivé par le serveur",
@@ -80,7 +89,7 @@ function transmit(
 }
 export function request(type: string, payload: unknown = {}): Promise<any> {
   const id = crypto.randomUUID();
-  return new Promise((resolve, reject) => {
+  return new Promise<any>((resolve, reject) => {
     const timeout = setTimeout(() => {
       pending.delete(id);
       reject(new Error("La requête a expiré"));
@@ -99,6 +108,13 @@ export function request(type: string, payload: unknown = {}): Promise<any> {
       pending.delete(id);
       reject(e);
     }
+  }).then((result) => {
+    if (type === "JOIN_CHANNEL") {
+      const v = payload as { channel_id: string; password?: string };
+      lastJoined = { channel_id: v.channel_id, password: v.password ?? "" };
+    }
+    if (type === "LEAVE_CHANNEL") lastJoined = undefined;
+    return result;
   });
 }
 export async function connect(address: string, nickname: string) {
@@ -168,12 +184,19 @@ async function open(address: string, nickname: string) {
             useStore.getState().set({
               connectionRTT: Math.round(performance.now() - task.started),
             });
+            if (p.server_time)
+              sampleYouTubeClock(
+                p.server_time,
+                performance.timeOrigin + task.started,
+                performance.timeOrigin + performance.now(),
+              );
             task.resolve(p);
           }
           return;
         }
         if (m.type === "PING") {
           transmit("PONG", {});
+          void request("PING").catch(() => {});
           return;
         }
         if (m.type === "ERROR") {
@@ -228,6 +251,24 @@ async function open(address: string, nickname: string) {
         applyEvent(m.type, p);
         applyChatEvent(m.type, p);
         screenEvent(m.type, p);
+        if (m.type === "USER_MOVED" && p.id === useStore.getState().self_id) {
+          lastJoined = p.channel_id
+            ? {
+                channel_id: p.channel_id,
+                password:
+                  lastJoined && lastJoined.channel_id === p.channel_id
+                    ? lastJoined.password
+                    : "",
+              }
+            : undefined;
+        }
+        youtubeEvent(m.type, p);
+        if (
+          m.type === "USER_MOVED" ||
+          m.type === "VOICE_LEFT" ||
+          m.type === "PERMISSIONS_UPDATED"
+        )
+          void syncYouTube().catch(report);
         if (
           m.type === "PERMISSIONS_UPDATED" ||
           m.type === "USER_MOVED" ||
@@ -243,7 +284,14 @@ async function open(address: string, nickname: string) {
         if (m.type === "SNAPSHOT") {
           authenticated = true;
           clearTimeout(timeout);
+          const restoring = retries > 0;
           retries = 0;
+          if (
+            restoring &&
+            lastJoined &&
+            p.channels.some((c: any) => c.id === lastJoined!.channel_id)
+          )
+            void request("JOIN_CHANNEL", lastJoined).catch(report);
           remember(address);
           const recentServers = {
             ...useStore.getState().recentServers,
@@ -280,6 +328,7 @@ async function open(address: string, nickname: string) {
       if (ws !== socket) return;
       void leaveVoice();
       void closeScreens();
+      clearYouTube();
       for (const [, p] of pending) {
         clearTimeout(p.timer);
         p.reject(new Error("Connexion fermée"));
@@ -305,6 +354,7 @@ async function open(address: string, nickname: string) {
   });
 }
 export function disconnect() {
+  lastJoined = undefined;
   intent = false;
   clearTimeout(timer);
   const old = socket;
@@ -312,6 +362,7 @@ export function disconnect() {
   old?.close();
   void leaveVoice();
   void closeScreens();
+  clearYouTube();
   for (const [, p] of pending) {
     clearTimeout(p.timer);
     p.reject(new Error("Déconnexion"));

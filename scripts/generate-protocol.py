@@ -3,6 +3,7 @@ import argparse,json
 from pathlib import Path
 r=Path(__file__).resolve().parents[1];p=argparse.ArgumentParser();p.add_argument('--check',action='store_true');args=p.parse_args();schema=json.loads((r/'shared/protocol/v1.schema.json').read_text())
 def ts(x):
+ if 'anyOf' in x:return '|'.join(ts(v) for v in x['anyOf'])
  if '$ref' in x:return x['$ref'].split('/')[-1]
  if 'enum' in x:return '|'.join(json.dumps(v) for v in x['enum'])
  t=x.get('type')

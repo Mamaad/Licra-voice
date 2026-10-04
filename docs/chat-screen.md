@@ -109,7 +109,7 @@ max_threads = 10000
 [screen_share]
 enabled = true
 max_shares_per_channel = 4
-max_bitrate = 8000000
+max_bitrate = 16000000
 max_height = 2160
 max_fps = 60
 ```
@@ -171,3 +171,5 @@ Les plafonds bitrate/FPS sont appliqués par le client officiel ; les dimensions
 source et nombre de pistes sont surveillés serveur, sans policier réseau dédié.
 Le contrôle sérialise les mutations et les appels média : à grande échelle,
 mesurer sa latence avant de déplacer ces appels hors du verrou existant.
+
+Depuis 0.3.0, les budgets du client et le plafond écran par défaut sont doublés (16 Mbit/s). Un plafond explicitement configuré par un administrateur reste respecté.

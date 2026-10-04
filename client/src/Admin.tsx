@@ -136,6 +136,14 @@ import { Icon, Avatar, StatusDot } from "./ui";
 import { voiceDiagnostics } from "./voice";
 
 const labels: Record<string, string> = {
+  "youtube.view": "Regarder YouTube",
+  "youtube.start": "Démarrer une activité YouTube",
+  "youtube.control": "Lire et mettre en pause pour le salon",
+  "youtube.seek": "Changer la position de lecture",
+  "youtube.change_video": "Changer de vidéo",
+  "youtube.stop": "Arrêter l’activité YouTube",
+  "youtube.queue_manage": "Gérer la file YouTube",
+
   "chat.channel.view": "Voir le chat du salon",
   "chat.channel.send": "Envoyer dans le chat",
   "chat.channel.history": "Consulter l’historique",
@@ -175,6 +183,11 @@ const labels: Record<string, string> = {
   "permissions.edit": "Modifier les permissions",
 };
 const groups = [
+  {
+    name: "YOUTUBE — Lecture synchronisée",
+    icon: "activity",
+    prefixes: ["youtube."],
+  },
   { name: "CHAT — Messages et modération", icon: "users", prefixes: ["chat."] },
   { name: "ÉCRAN — Partage d’écran", icon: "activity", prefixes: ["screen."] },
   { name: "VOICE — Permissions vocales", icon: "mic", prefixes: ["voice."] },

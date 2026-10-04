@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useFullscreen } from "./useFullscreen";
 import { useStore } from "./store";
 import {
   useScreens,
@@ -22,32 +22,8 @@ function ScreenTile({
   onFocus: () => void;
   onError: (s: string) => void;
 }) {
-  const native = "__TAURI_INTERNALS__" in window;
-  async function fullscreen() {
-    if (native) await getCurrentWindow().setFullscreen(true);
-    try {
-      await container.current?.requestFullscreen();
-    } catch (e) {
-      if (native) await getCurrentWindow().setFullscreen(false);
-      throw e;
-    }
-  }
-  useEffect(() => {
-    const exit = () => {
-      if (native && !document.fullscreenElement)
-        void getCurrentWindow().setFullscreen(false);
-    };
-    document.addEventListener("fullscreenchange", exit);
-    return () => {
-      document.removeEventListener("fullscreenchange", exit);
-      if (native && document.fullscreenElement === container.current)
-        void getCurrentWindow()
-          .setFullscreen(false)
-          .catch(() => {});
-    };
-  }, []);
+  const fullscreen = useFullscreen();
   const element = useRef<HTMLVideoElement>(null),
-    container = useRef<HTMLDivElement>(null),
     s = useStore();
   useEffect(() => {
     const el = element.current;
@@ -66,7 +42,7 @@ function ScreenTile({
   return (
     <div
       className={`screen-tile ${focused ? "focused" : ""}`}
-      ref={container}
+      ref={fullscreen.container}
       onDoubleClick={onFocus}
     >
       <header>
@@ -78,9 +54,11 @@ function ScreenTile({
           {focused ? "Grille" : "Focus / épingler"}
         </button>
         <button
-          onClick={() => void fullscreen().catch((e) => onError(String(e)))}
+          onClick={() =>
+            void fullscreen.toggle().catch((e) => onError(String(e)))
+          }
         >
-          Plein écran
+          {fullscreen.active ? "Quitter le plein écran" : "Plein écran"}
         </button>
         {!item.local && p["screen.stop_others"] && (
           <button

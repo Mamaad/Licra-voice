@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "test:media": "node tools/media-check/run.mjs",
-    "test:ui": "node tools/ui-check/run.mjs"
+    "test:ui": "node tools/ui-check/run.mjs",
+    "test:youtube-api": "node tools/youtube-check/run.mjs"
   }
 }

@@ -59,6 +59,8 @@ type bucket struct {
 
 // ponytail: control mutations are serialized; move media I/O outside this lock if measured control latency requires it.
 type Server struct {
+	youtube           map[string]YouTubeActivity
+	youtubeTimers     map[string]*time.Timer
 	Config            config.Config
 	DB                *sql.DB
 	ID                string
@@ -85,6 +87,9 @@ func New(c config.Config, db *sql.DB) (*Server, error) {
 		return nil, e
 	}
 	if e := s.seed(); e != nil {
+		return nil, e
+	}
+	if e := s.loadYouTube(); e != nil {
 		return nil, e
 	}
 	if e := s.reloadPolicy(); e != nil {
@@ -223,7 +228,7 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	challenge := identity.New(s.ID, h.ClientVersion, h.Nickname, h.PublicKey)
-	if write(hs, c, protocol.Message("SERVER_HELLO", hello.RequestID, map[string]any{"protocol_version": protocol.Version, "server_version": protocol.ServerVersion, "server_name": s.Config.Server.Name, "server_id": s.ID, "nonce": challenge.Nonce, "challenge_context": challenge.Context, "media_configuration": map[string]any{"signaling_path": "/livekit", "udp_port": s.Config.LiveKit.MediaUDPPort, "tcp_port": s.Config.LiveKit.MediaTCPPort}, "minimum_client_version": s.Config.Server.MinimumClientVersion, "features": []string{"voice", "chat", "screen_share"}})) != nil {
+	if write(hs, c, protocol.Message("SERVER_HELLO", hello.RequestID, map[string]any{"protocol_version": protocol.Version, "server_version": protocol.ServerVersion, "server_name": s.Config.Server.Name, "server_id": s.ID, "nonce": challenge.Nonce, "challenge_context": challenge.Context, "media_configuration": map[string]any{"signaling_path": "/livekit", "udp_port": s.Config.LiveKit.MediaUDPPort, "tcp_port": s.Config.LiveKit.MediaTCPPort}, "minimum_client_version": s.Config.Server.MinimumClientVersion, "features": []string{"voice", "chat", "screen_share", "youtube_sync"}})) != nil {
 		return
 	}
 	auth, e := read(hs, c)
@@ -374,7 +379,7 @@ func (s *Server) users() []User {
 func (s *Server) handle(ctx context.Context, p *client, m protocol.Envelope) {
 	switch m.Type {
 	case "PING":
-		s.send(p, "PONG", m.RequestID, nil)
+		s.send(p, "PONG", m.RequestID, map[string]any{"server_time": time.Now().UnixMilli()})
 	case "PONG":
 	case "SET_NICKNAME":
 		var v struct {
@@ -391,6 +396,10 @@ func (s *Server) handle(ctx context.Context, p *client, m protocol.Envelope) {
 		s.broadcast("USER_UPDATED", p.user)
 		s.send(p, "ACK", m.RequestID, nil)
 	default:
+		if strings.HasPrefix(m.Type, "YOUTUBE_") {
+			s.youtubeOperation(p, m)
+			return
+		}
 		if strings.HasPrefix(m.Type, "CHAT_") {
 			s.chatOperation(p, m)
 			return
@@ -406,6 +415,21 @@ func (s *Server) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.closing = true
+	for _, t := range s.youtubeTimers {
+		t.Stop()
+	}
+	for _, a := range s.youtube {
+		if a.State == "PLAYING" {
+			a.Position = a.position(time.Now())
+			a.State = "PAUSED"
+			a.Reference = time.Now().UnixMilli()
+			a.Updated = a.Reference
+			a.Revision++
+			if e := s.saveYouTube(a); e != nil {
+				slog.Error("YouTube shutdown persistence failed", "error", e)
+			}
+		}
+	}
 	s.maintenanceCancel()
 	for _, p := range s.clients {
 		p.cancel()

@@ -73,3 +73,7 @@ La validation locale et la validation sur Windows sont consignées dans
 benchmark du control plane. La version 0.2.0 ajoute le chat persistant
 et le partage d’écran LiveKit. Fichiers, YouTube, navigateur collaboratif,
 webcam et tableau blanc restent différés.
+
+## YouTube synchronisé (0.3.0)
+
+Le lecteur officiel est chargé directement par chaque client ; Licra ne transporte que l’état, les permissions et la file. Le chat et la voix restent accessibles. [Architecture, configuration et limites](docs/youtube.md). Le plein écran est corrigé et les budgets écran par défaut sont doublés.

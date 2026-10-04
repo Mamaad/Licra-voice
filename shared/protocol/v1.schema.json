@@ -280,6 +280,34 @@
             "max_height",
             "max_fps"
           ]
+        },
+        "youtube": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "max_queue": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "enabled",
+            "max_queue"
+          ]
+        },
+        "youtube_activity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/YouTubeActivity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "server_time": {
+          "type": "number"
         }
       },
       "required": [
@@ -399,6 +427,75 @@
         "reply_to_message_id"
       ],
       "additionalProperties": false
+    },
+    "YouTubeActivity": {
+      "type": "object",
+      "properties": {
+        "channel_id": {
+          "type": "string"
+        },
+        "video_id": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "STOPPED",
+            "PLAYING",
+            "PAUSED"
+          ]
+        },
+        "position_reference": {
+          "type": "number"
+        },
+        "reference_timestamp": {
+          "type": "number"
+        },
+        "started_by": {
+          "type": "string"
+        },
+        "controlled_by": {
+          "type": "string"
+        },
+        "controller_nickname": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "number"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "queue": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "previous": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "channel_id",
+        "video_id",
+        "state",
+        "position_reference",
+        "reference_timestamp",
+        "started_by",
+        "controlled_by",
+        "controller_nickname",
+        "updated_at",
+        "revision",
+        "duration",
+        "queue",
+        "previous"
+      ]
     }
   },
   "events": [
@@ -447,7 +544,22 @@
     "SCREEN_START",
     "SCREEN_STOP",
     "SCREEN_STATE",
-    "SCREEN_REVOKED"
+    "SCREEN_REVOKED",
+    "YOUTUBE_GET",
+    "YOUTUBE_START",
+    "YOUTUBE_PLAY",
+    "YOUTUBE_PAUSE",
+    "YOUTUBE_SEEK",
+    "YOUTUBE_STOP",
+    "YOUTUBE_NEXT",
+    "YOUTUBE_PREVIOUS",
+    "YOUTUBE_DURATION",
+    "YOUTUBE_ENDED",
+    "YOUTUBE_QUEUE_ADD",
+    "YOUTUBE_QUEUE_REMOVE",
+    "YOUTUBE_QUEUE_MOVE",
+    "YOUTUBE_QUEUE_CLEAR",
+    "YOUTUBE_STATE"
   ],
   "permissions": [
     "server.view",
@@ -492,6 +604,13 @@
     "chat.moderation.view_deleted",
     "screen.share",
     "screen.watch",
-    "screen.stop_others"
+    "screen.stop_others",
+    "youtube.view",
+    "youtube.start",
+    "youtube.control",
+    "youtube.seek",
+    "youtube.change_video",
+    "youtube.stop",
+    "youtube.queue_manage"
   ]
 }
