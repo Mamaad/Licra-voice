@@ -31,6 +31,7 @@ interface State extends Snapshot {
   muted: boolean;
   deafened: boolean;
   talking: string[];
+  microphoneLevel: number;
   settings: Settings;
   history: string[];
   favorites: Favorite[];
@@ -54,6 +55,7 @@ export const useStore = create<State>((set, get) => ({
   muted: false,
   deafened: false,
   talking: [],
+  microphoneLevel: 0,
   settings: { ...initialSettings, ...saved("settings", {}) },
   history: saved("history", []),
   favorites: saved("favorites", []),

@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useStore, applyEvent, remember } from "./store";
 import { parseAddress } from "./address.mjs";
-import { joinVoice, leaveVoice } from "./voice";
+import { joinVoice, leaveVoice, syncVoicePermissions } from "./voice";
 import type { Envelope } from "./types";
 import { CLIENT_VERSION, PROTOCOL_VERSION } from "./version";
 export { CLIENT_VERSION, PROTOCOL_VERSION };
@@ -14,11 +14,26 @@ let last: { address: string; nickname: string } | undefined;
 const pending = new Map<
   string,
   {
+    type: string;
     resolve: (p: any) => void;
     reject: (e: Error) => void;
     timer: ReturnType<typeof setTimeout>;
   }
 >();
+const actions: Record<string, string> = {
+  JOIN_CHANNEL: "Rejoindre le salon",
+  REFRESH_VOICE: "Reconnecter la voix",
+  MOVE_USER: "Déplacer un utilisateur",
+  CLAIM_OWNER: "Réclamer Owner",
+  VOICE_STATE: "Modifier l’état vocal",
+  LIST_DEVICE_ROLES: "Consulter les rôles",
+  LIST_BANS: "Consulter les bans",
+  LIST_OVERRIDES: "Consulter les permissions",
+  CREATE_CHANNEL: "Créer un salon",
+  UPDATE_CHANNEL: "Modifier un salon",
+  DELETE_CHANNEL: "Supprimer un salon",
+  MUTE_USER: "Couper un utilisateur",
+};
 const codes: Record<string, string> = {
   PERMISSION_DENIED: "Permission refusée",
   AUTH_FAILED: "Signature d’identité invalide",
@@ -58,7 +73,7 @@ export function request(type: string, payload: unknown = {}): Promise<any> {
       pending.delete(id);
       reject(new Error("La requête a expiré"));
     }, 10000);
-    pending.set(id, { resolve, reject, timer: timeout });
+    pending.set(id, { type, resolve, reject, timer: timeout });
     try {
       transmit(type, payload, id);
     } catch (e) {
@@ -126,10 +141,17 @@ async function open(address: string, nickname: string) {
           return;
         }
         if (m.type === "ERROR") {
-          const error = new Error(codes[p.code] ?? p.code);
+          const task = m.request_id ? pending.get(m.request_id) : undefined;
+          const action = task
+            ? (actions[task.type] ?? task.type) + " : "
+            : "Serveur : ";
+          const error = new Error(
+            action +
+              (codes[p.code] ?? p.code) +
+              (p.permission ? " (" + p.permission + ")" : ""),
+          );
           if (p.code === "INCOMPATIBLE_VERSION")
             window.dispatchEvent(new Event("licra:check-update"));
-          const task = m.request_id ? pending.get(m.request_id) : undefined;
           if (task) {
             clearTimeout(task.timer);
             task.reject(error);
@@ -162,6 +184,12 @@ async function open(address: string, nickname: string) {
           }
         }
         applyEvent(m.type, p);
+        if (
+          m.type === "PERMISSIONS_UPDATED" ||
+          (m.type === "VOICE_STATE_UPDATED" &&
+            p.id === useStore.getState().self_id)
+        )
+          void syncVoicePermissions().catch(report);
         if (m.type === "SNAPSHOT") {
           authenticated = true;
           clearTimeout(timeout);

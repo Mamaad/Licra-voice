@@ -2,24 +2,50 @@ import { useEffect, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { Modal } from "./Modal";
-import { report } from "./control";
+import { CLIENT_VERSION } from "./version";
 export function Updater() {
   const [update, setUpdate] = useState<Update | null>(null),
     [visible, show] = useState(false),
-    [progress, setProgress] = useState(0),
+    [message, setMessage] = useState(""),
+    [checking, setChecking] = useState(false),
+    [progress, setProgress] = useState<number | null>(0),
     [busy, setBusy] = useState(false);
   useEffect(() => {
-    let alive = true;
+    let alive = true,
+      looking = false;
     async function look(event?: Event) {
+      if (looking) {
+        if (event) show(true);
+        return;
+      }
+      looking = true;
+      setChecking(true);
+      if (event) {
+        show(true);
+        setMessage("Recherche d’une mise à jour…");
+      }
       try {
         const next = await check();
-        if (alive && next) {
-          setUpdate(next);
-          show(true);
-        } else if (event && alive)
-          report(new Error("Votre client est à jour."));
+        if (!alive) {
+          await next?.close();
+          return;
+        }
+        setUpdate((previous) => {
+          if (previous !== next) void previous?.close();
+          return next;
+        });
+        setMessage(
+          next
+            ? "Nouvelle version disponible."
+            : `Licra ${CLIENT_VERSION} est à jour.`,
+        );
+        if (next) show(true);
       } catch (e) {
-        if (event && alive) report(e);
+        if (alive)
+          setMessage("Impossible de vérifier les mises à jour : " + String(e));
+      } finally {
+        looking = false;
+        if (alive) setChecking(false);
       }
     }
     void look();
@@ -33,43 +59,63 @@ export function Updater() {
     };
   }, []);
   async function install() {
-    if (!update) return;
+    if (!update || busy) return;
     setBusy(true);
+    setMessage("Téléchargement et vérification de la signature…");
     let downloaded = 0,
       total = 0;
     try {
       await update.downloadAndInstall((e) => {
-        if (e.event === "Started") total = e.data.contentLength ?? 0;
+        if (e.event === "Started") {
+          total = e.data.contentLength ?? 0;
+          setProgress(total ? 0 : null);
+        }
         if (e.event === "Progress") {
           downloaded += e.data.chunkLength;
-          setProgress(total ? Math.round((downloaded / total) * 100) : 0);
+          setProgress(total ? Math.round((downloaded / total) * 100) : null);
         }
-        if (e.event === "Finished") setProgress(100);
+        if (e.event === "Finished") {
+          setProgress(100);
+          setMessage("Installation puis redémarrage de Licra…");
+        }
       });
       await relaunch();
     } catch (e) {
-      report(e);
+      setMessage("Mise à jour impossible : " + String(e));
       setBusy(false);
     }
   }
-  return visible && update ? (
+  return visible ? (
     <Modal
-      title={"Nouvelle version disponible · v" + update.version}
+      title={
+        update
+          ? "Nouvelle version · v" + update.version
+          : "Mise à jour de Licra"
+      }
       onClose={() => !busy && show(false)}
     >
-      <p>{update.body ?? "Nouvelle release Licra"}</p>
+      <p role="status">{message}</p>
+      {update && (
+        <p style={{ whiteSpace: "pre-wrap" }}>
+          {update.body ?? "Nouvelle release Licra"}
+        </p>
+      )}
       {busy ? (
         <>
-          <progress max="100" value={progress} />
-          <p>{progress}%</p>
+          <progress max="100" value={progress ?? undefined} />
+          <p>
+            {progress === null ? "Téléchargement en cours…" : progress + "%"}
+          </p>
         </>
       ) : (
-        <>
-          <button onClick={() => show(false)}>Plus tard</button>
-          <button onClick={() => void install()}>
-            Télécharger et installer
-          </button>
-        </>
+        update && (
+          <>
+            <button onClick={() => show(false)}>Plus tard</button>
+            <button disabled={checking} onClick={() => void install()}>
+              Télécharger, installer et redémarrer
+            </button>
+          </>
+        )
       )}
     </Modal>
   ) : null;

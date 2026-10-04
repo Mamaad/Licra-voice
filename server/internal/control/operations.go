@@ -13,7 +13,7 @@ import (
 func decode(m protocol.Envelope, p any) bool { return json.Unmarshal(m.Payload, p) == nil }
 func (s *Server) require(p *client, id, permission, ch string) bool {
 	if !s.allowed(p.user.Fingerprint, permission, ch) {
-		s.sendError(p, id, "PERMISSION_DENIED")
+		s.send(p, "ERROR", id, map[string]string{"code": "PERMISSION_DENIED", "permission": permission, "channel_id": ch})
 		return false
 	}
 	return true
@@ -77,6 +77,7 @@ func (s *Server) operation(ctx context.Context, p *client, m protocol.Envelope) 
 			return
 		}
 		s.permissionsUpdated()
+		s.broadcast("SERVER_INFO_UPDATED", map[string]any{"bootstrap_available": false})
 		s.send(p, "ACK", id, nil)
 		s.sendRoles()
 	case "JOIN_CHANNEL":

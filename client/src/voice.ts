@@ -3,9 +3,8 @@ import {
   RoomEvent,
   Track,
   RemoteAudioTrack,
-  type LocalAudioTrack,
+  LocalAudioTrack,
   AudioPresets,
-  createLocalAudioTrack,
 } from "livekit-client";
 import { register, unregisterAll } from "@tauri-apps/plugin-global-shortcut";
 import { useStore } from "./store";
@@ -14,8 +13,32 @@ let room: Room | undefined,
   generation = 0,
   held = false,
   canSpeak = false,
-  chain = Promise.resolve();
+  chain: Promise<Room | undefined | void> = Promise.resolve();
 const elements = new Map<string, HTMLAudioElement>();
+let microphoneStream: MediaStream | undefined,
+  microphoneTrack: LocalAudioTrack | undefined,
+  preview = false,
+  activationUntil = 0,
+  captureEpoch = 0,
+  captureChain = Promise.resolve(),
+  microphoneChain = Promise.resolve();
+export function audioError(error: unknown) {
+  const name = error instanceof Error ? error.name : "";
+  if (name === "NotAllowedError" || name === "PermissionDeniedError")
+    return new Error(
+      "Accès au microphone refusé : autorisez les applications de bureau dans Windows > Confidentialité > Microphone.",
+    );
+  if (name === "NotFoundError" || name === "OverconstrainedError")
+    return new Error(
+      "Microphone introuvable : reconnectez-le ou choisissez un autre périphérique dans les paramètres.",
+    );
+  if (name === "NotReadableError")
+    return new Error(
+      "Microphone indisponible : vérifiez le périphérique et son utilisation exclusive par une autre application.",
+    );
+  return error instanceof Error ? error : new Error(String(error));
+}
+const reportAudio = (e: unknown) => report(audioError(e));
 let meterContext: AudioContext | undefined,
   meterTimer: ReturnType<typeof setInterval> | undefined;
 const meters = new Map<
@@ -26,12 +49,15 @@ const meters = new Map<
     data: Float32Array<ArrayBuffer>;
   }
 >();
-function meter(id: string, track: RemoteAudioTrack | LocalAudioTrack) {
+function meter(id: string, track: RemoteAudioTrack | MediaStreamTrack) {
   if (!meterContext) meterContext = new AudioContext();
+  void meterContext.resume().catch(reportAudio);
   const old = meters.get(id);
   old?.source.disconnect();
   const source = meterContext.createMediaStreamSource(
-      new MediaStream([track.mediaStreamTrack]),
+      new MediaStream([
+        track instanceof RemoteAudioTrack ? track.mediaStreamTrack : track,
+      ]),
     ),
     analyser = meterContext.createAnalyser();
   analyser.fftSize = 256;
@@ -48,12 +74,26 @@ function meter(id: string, track: RemoteAudioTrack | LocalAudioTrack) {
         m.analyser.getFloatTimeDomainData(m.data);
         let energy = 0;
         for (const x of m.data) energy += x * x;
-        if (Math.sqrt(energy / m.data.length) > 0.015) talking.push(id);
+        const level = Math.sqrt(energy / m.data.length);
+        if (id === "microphone") {
+          useStore.getState().set({ microphoneLevel: level });
+          if (level >= settings().threshold)
+            activationUntil = performance.now() + 250;
+          if (settings().mode === "activation")
+            void updateMicrophone().catch(reportAudio);
+          if (
+            level > 0.015 &&
+            microphoneTrack &&
+            !microphoneTrack.isMuted &&
+            room
+          )
+            talking.push(room.localParticipant.identity);
+        } else if (level > 0.015) talking.push(id);
       }
       const previous = useStore.getState().talking;
       if (talking.join() !== previous.join())
         useStore.getState().set({ talking });
-    }, 100);
+    }, 50);
 }
 async function stopMeters() {
   clearInterval(meterTimer);
@@ -129,14 +169,12 @@ export function joinVoice(
         meters.get(participant.identity)?.source.disconnect();
         meters.delete(participant.identity);
       });
-      next.on(RoomEvent.LocalTrackPublished, (pub) => {
-        if (pub.audioTrack)
-          meter(next.localParticipant.identity, pub.audioTrack);
-      });
-      next.on(RoomEvent.LocalTrackUnpublished, () => {
-        const id = next.localParticipant.identity;
-        meters.get(id)?.source.disconnect();
-        meters.delete(id);
+
+      next.on(RoomEvent.LocalTrackUnpublished, (pub) => {
+        if (pub.track === microphoneTrack) {
+          microphoneTrack?.stop();
+          microphoneTrack = undefined;
+        }
       });
       next.on(RoomEvent.Disconnected, () => {
         if (room === next) {
@@ -151,18 +189,29 @@ export function joinVoice(
       }
       await next.startAudio();
       await configurePTT();
-      await updateMicrophone(false);
+      if (canSpeak)
+        await ensureMicrophone().catch((e) => {
+          throw audioError(e);
+        });
+      await updateMicrophone();
       await output();
-      startActivation(next);
+      return next;
     });
   return chain;
 }
 async function closeRoom() {
-  await stopMeters();
-  stopActivation();
   const old = room;
   room = undefined;
+  releaseMicrophone();
+  if (!preview) await stopMeters();
   await old?.disconnect();
+  microphoneTrack?.stop();
+  microphoneTrack = undefined;
+  for (const [id, m] of meters)
+    if (id !== "microphone") {
+      m.source.disconnect();
+      meters.delete(id);
+    }
   for (const e of elements.values()) e.remove();
   elements.clear();
   await unregisterAll();
@@ -183,16 +232,35 @@ export async function configurePTT() {
       void updateMicrophone().catch(report);
     });
 }
-export async function updateMicrophone(active = true) {
-  const s = useStore.getState();
-  const enabled =
-    canSpeak &&
-    !s.users.find((u) => u.id === s.self_id)?.server_muted &&
-    !s.muted &&
-    !s.deafened &&
-    (settings().mode === "continuous" ||
-      (settings().mode === "ptt" ? held : active));
-  await room?.localParticipant.setMicrophoneEnabled(enabled, capture());
+export function updateMicrophone() {
+  microphoneChain = microphoneChain
+    .catch(() => {})
+    .then(async () => {
+      const s = useStore.getState();
+      const enabled =
+        canSpeak &&
+        !s.users.find((u) => u.id === s.self_id)?.server_muted &&
+        !s.muted &&
+        !s.deafened &&
+        (settings().mode === "continuous" ||
+          (settings().mode === "ptt"
+            ? held
+            : performance.now() < activationUntil));
+      if (!microphoneTrack || microphoneTrack.isMuted === !enabled) return;
+      if (enabled) await microphoneTrack.unmute();
+      else await microphoneTrack.mute();
+    });
+  return microphoneChain;
+}
+export async function syncVoicePermissions() {
+  const s = useStore.getState(),
+    self = s.users.find((u) => u.id === s.self_id);
+  if (!room || !self?.channel_id) return;
+  canSpeak =
+    !!s.channel_permissions[self.channel_id]?.["voice.speak"] &&
+    !self.server_muted;
+  if (canSpeak && !microphoneTrack) await ensureMicrophone();
+  await updateMicrophone();
 }
 export async function toggleMute() {
   const s = useStore.getState();
@@ -234,65 +302,121 @@ export function setVolume(user: string, value: number) {
   localVolumes();
 }
 export async function output() {
-  if (settings().output && room)
-    await room.switchActiveDevice("audiooutput", settings().output);
+  if (room)
+    await room.switchActiveDevice(
+      "audiooutput",
+      settings().output || "default",
+    );
 }
-export async function refreshSettings() {
-  await room?.localParticipant
-    .getTrackPublication(Track.Source.Microphone)
-    ?.audioTrack?.restartTrack(capture());
-  await configurePTT();
-  await output();
-  await updateMicrophone();
-  if (room) startActivation(room);
+function releaseMicrophone() {
+  if (preview || (room && canSpeak)) return;
+  captureEpoch++;
+  microphoneStream?.getTracks().forEach((t) => t.stop());
+  microphoneStream = undefined;
+  meters.get("microphone")?.source.disconnect();
+  meters.delete("microphone");
+  useStore.getState().set({ microphoneLevel: 0 });
 }
-let activationTimer: ReturnType<typeof setInterval> | undefined,
-  audioContext: AudioContext | undefined,
-  activationStream: MediaStream | undefined;
-function stopActivation() {
-  clearInterval(activationTimer);
-  activationStream?.getTracks().forEach((t) => t.stop());
-  activationStream = undefined;
-  void audioContext?.close();
-  audioContext = undefined;
-}
-function startActivation(next: Room) {
-  stopActivation();
-  if (settings().mode !== "activation") return;
-  void (async () => {
-    activationStream = await navigator.mediaDevices.getUserMedia({
-      audio: capture(),
+async function ensureMicrophone(force = false) {
+  const epoch = captureEpoch;
+  captureChain = captureChain
+    .catch(() => {})
+    .then(async () => {
+      if (epoch !== captureEpoch || (!preview && !(room && canSpeak))) return;
+      if (
+        force ||
+        !microphoneStream ||
+        microphoneStream.getAudioTracks()[0]?.readyState !== "live"
+      ) {
+        const next = await navigator.mediaDevices.getUserMedia({
+          audio: capture(),
+          video: false,
+        });
+        if (epoch !== captureEpoch || (!preview && !(room && canSpeak))) {
+          next.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        const previous = microphoneStream;
+        microphoneStream = next;
+        activationUntil = 0;
+        meter("microphone", next.getAudioTracks()[0]);
+        if (microphoneTrack && room) {
+          const old = microphoneTrack.mediaStreamTrack;
+          await microphoneTrack.replaceTrack(
+            next.getAudioTracks()[0].clone(),
+            true,
+          );
+          old.stop();
+        }
+        previous?.getTracks().forEach((t) => t.stop());
+      }
+      if (room && canSpeak && !microphoneTrack && microphoneStream) {
+        const target = room;
+        const track = new LocalAudioTrack(
+          microphoneStream.getAudioTracks()[0].clone(),
+          undefined,
+          true,
+        );
+        await track.mute(); // Publish muted: PTT and activation must never leak initial audio.
+        try {
+          await target.localParticipant.publishTrack(track, {
+            source: Track.Source.Microphone,
+          });
+          if (room !== target) {
+            track.stop();
+            return;
+          }
+          microphoneTrack = track;
+        } catch (e) {
+          track.stop();
+          throw e;
+        }
+      }
     });
-    if (room !== next) {
-      stopActivation();
-      return;
-    }
-    audioContext = new AudioContext();
-    const source = audioContext.createMediaStreamSource(activationStream),
-      analyser = audioContext.createAnalyser();
-    analyser.fftSize = 512;
-    source.connect(analyser);
-    const data = new Float32Array(analyser.fftSize);
-    let last = 0;
-    activationTimer = setInterval(() => {
-      analyser.getFloatTimeDomainData(data);
-      let energy = 0;
-      for (const x of data) energy += x * x;
-      if (Math.sqrt(energy / data.length) > settings().threshold)
-        last = performance.now();
-      void updateMicrophone(performance.now() - last < 250).catch(report);
-    }, 50);
-  })().catch(report);
+  await captureChain;
+}
+export function startMicrophonePreview() {
+  preview = true;
+  return ensureMicrophone();
+}
+export function stopMicrophonePreview() {
+  preview = false;
+  releaseMicrophone();
+  if (!room) void stopMeters();
+}
+export async function refreshSettings(
+  patch: Partial<ReturnType<typeof settings>>,
+) {
+  if (
+    ["input", "echoCancellation", "noiseSuppression", "autoGainControl"].some(
+      (k) => k in patch,
+    )
+  )
+    await ensureMicrophone(true);
+  if ("mode" in patch || "shortcut" in patch) {
+    activationUntil = 0;
+    await configurePTT();
+  }
+  if ("output" in patch) await output();
+  await updateMicrophone();
 }
 export async function testMicrophone() {
-  const track = await createLocalAudioTrack(capture());
-  const e = track.attach();
-  document.body.append(e);
+  await ensureMicrophone();
+  if (!microphoneStream) throw new Error("Microphone indisponible");
+  const audio = new Audio();
+  audio.srcObject = microphoneStream;
+  const sink = audio as HTMLAudioElement & {
+    setSinkId?: (id: string) => Promise<void>;
+  };
+  if (sink.setSinkId) await sink.setSinkId(settings().output || "default");
+  await audio.play();
   return () => {
-    track.detach().forEach((x) => x.remove());
-    track.stop();
+    audio.pause();
+    audio.srcObject = null;
   };
 }
 export async function devices() {
-  return Room.getLocalDevices(undefined, true);
+  return (await navigator.mediaDevices.enumerateDevices()).filter(
+    (d) => d.kind !== "videoinput",
+  );
 }

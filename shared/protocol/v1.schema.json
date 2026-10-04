@@ -153,6 +153,9 @@
             },
             "name": {
               "type": "string"
+            },
+            "bootstrap_available": {
+              "type": "boolean"
             }
           },
           "required": [

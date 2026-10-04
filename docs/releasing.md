@@ -19,7 +19,7 @@ Le workflow Windows ne les lit que pour la build de release, jamais pour une PR.
    tauri.conf.json et RELEASE_NOTES.md.
 2. `python3 scripts/generate-protocol.py`; `python3 scripts/check-versions.py`.
 3. Refaire les tests, vérifier les critères Windows décrits dans validation.md.
-4. Pousser un tag `v0.1.0` correspondant aux versions. Le workflow compile
+4. Pousser un tag SemVer (`v0.1.1`, par exemple) correspondant aux versions. Le workflow compile
    serveur Linux et client NSIS Windows, signe le setup et génère latest.json.
 5. Le job publish crée la release et charge les assets. Les builds doivent
    toutes réussir avant publication. Un artifact sans `.sig` n’est pas publiable.
@@ -33,3 +33,18 @@ SmartScreen pour un éditeur non reconnu, malgré une signature updater valide.
 
 [Updater officiel Tauri](https://v2.tauri.app/plugin/updater/)
 et [installer Windows](https://v2.tauri.app/distribute/windows-installer/).
+
+Un simple `git push` lance la validation, sans publier de mise à jour. Après
+modification des versions et des notes, pousser le commit puis son tag :
+
+```bash
+git push origin main
+git tag v0.1.2
+git push origin v0.1.2
+```
+
+Cet exemple suppose que les fichiers de version indiquent déjà `0.1.2`.
+Attendre le succès du workflow « Signed releases ». Il charge le setup signé et
+`latest.json` sur GitHub ; le bouton « Mettre à jour » du client recherche cette
+release, puis propose téléchargement, installation et relance. Depuis 0.1.0,
+ce contrôle est dans Paramètres > Vérifier les mises à jour.

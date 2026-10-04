@@ -4,6 +4,15 @@
     <h1>Licra media integration harness</h1>
     <script type="module">
       import { Room, RoomEvent, Track } from "livekit-client";
+      import { CLIENT_VERSION } from "/src/version.ts";
+      import * as voice from "/src/voice.ts";
+      import { useStore, applyEvent } from "/src/store.ts";
+      const production = new URLSearchParams(location.search).has(
+        "client-audio",
+      );
+      // Test-only IPC shim; production capture, meter and mute logic run unchanged.
+      if (production)
+        window.__TAURI_INTERNALS__ = { invoke: async () => undefined };
       window.harness = {
         events: [],
         room: null,
@@ -13,6 +22,16 @@
         requests: new Map(),
       };
       const h = window.harness;
+      h.audio = voice;
+      h.store = useStore;
+      const acquire = navigator.mediaDevices.getUserMedia.bind(
+        navigator.mediaDevices,
+      );
+      h.cameraRequests = 0;
+      navigator.mediaDevices.getUserMedia = (options) => {
+        if (options.video) h.cameraRequests++;
+        return acquire(options);
+      };
       function send(type, payload = {}) {
         const request_id = crypto.randomUUID();
         h.socket.send(
@@ -48,7 +67,7 @@
           h.socket.onopen = () => {
             void send("CLIENT_HELLO", {
               protocol_version: 1,
-              client_version: "0.1.0",
+              client_version: CLIENT_VERSION,
               nickname,
               device_public_key: public_key,
             }).catch(() => {});
@@ -57,6 +76,7 @@
             const m = JSON.parse(e.data),
               p = m.payload;
             h.events.push(m);
+            if (production) applyEvent(m.type, p);
             if (m.type === "SERVER_HELLO") {
               const signature = new Uint8Array(
                 await crypto.subtle.sign(
@@ -94,6 +114,11 @@
               h.lastChannel = p.channel_id;
               h.queue = h.queue
                 .then(async () => {
+                  if (production) {
+                    h.room = await voice.joinVoice(address + "/livekit", p);
+                    h.joined = p.channel_id;
+                    return;
+                  }
                   await h.room?.disconnect();
                   const room = new Room({
                     webAudioMix: true,

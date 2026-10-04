@@ -1,6 +1,7 @@
 [Unit]
 Description=Licra control server
-Requires=licra-livekit.service
+# Keep control running while LiveKit restarts after a failure.
+Wants=licra-livekit.service
 After=licra-livekit.service
 
 [Service]

@@ -37,6 +37,17 @@ export function App() {
   const permissions =
     s.channel_permissions[selected?.id ?? ""] ?? s.permissions;
   function join(c: Channel) {
+    if (
+      !s.channel_permissions[c.id]?.["channel.join"] ||
+      !s.channel_permissions[c.id]?.["channel.move_self"]
+    ) {
+      report(
+        new Error(
+          "Rejoindre le salon : vous n’avez pas la permission de rejoindre ou de vous déplacer dans ce salon.",
+        ),
+      );
+      return;
+    }
     const password = c.has_password
       ? (prompt("Mot de passe du salon") ?? "")
       : "";
@@ -64,7 +75,12 @@ export function App() {
               e.preventDefault();
               const id = e.dataTransfer.getData("text/plain");
               if (id === s.self_id) join(c);
-              else
+              else if (
+                s.channel_permissions[c.id]?.["channel.move_others"] &&
+                (s.channel_permissions[
+                  s.users.find((u) => u.id === id)?.channel_id ?? ""
+                ] ?? s.permissions)["channel.move_others"]
+              )
                 void request("MOVE_USER", {
                   channel_id: c.id,
                   user_id: id,
@@ -143,6 +159,11 @@ export function App() {
           🎧 {s.deafened ? "Son coupé" : "Écouter"}
         </button>
         <button onClick={() => showSettings(true)}>Paramètres</button>
+        <button
+          onClick={() => window.dispatchEvent(new Event("licra:check-update"))}
+        >
+          Mettre à jour
+        </button>
         {s.status === "connected" && s.permissions["role.view"] && (
           <button onClick={() => showAdmin(true)}>Administration</button>
         )}
@@ -166,15 +187,6 @@ export function App() {
                 <h3>Hors salon</h3>
                 {s.users.filter((u) => !u.channel_id).map(user)}
               </section>
-              <button
-                onClick={() => {
-                  const token = prompt("Bootstrap administrator token");
-                  if (token)
-                    void request("CLAIM_OWNER", { token }).catch(report);
-                }}
-              >
-                Réclamer le rôle Owner
-              </button>
             </>
           ) : (
             <form

@@ -3,10 +3,11 @@
   "opus_received": true,
   "isolated_rooms": true,
   "admin_move": true,
+  "client_audio_regressions": true,
   "stale_token_status": 403,
   "stats": [
     {
-      "received": 1472,
+      "received": 1584,
       "opus": true,
       "codecs": [
         "audio/opus"
@@ -15,7 +16,7 @@
       "errors": ""
     },
     {
-      "received": 1675,
+      "received": 2972,
       "opus": true,
       "codecs": [
         "audio/opus"

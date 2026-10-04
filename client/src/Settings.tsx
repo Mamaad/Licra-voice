@@ -1,27 +1,91 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useStore } from "./store";
-import { devices, refreshSettings, testMicrophone } from "./voice";
-import { report } from "./control";
+import {
+  devices,
+  refreshSettings,
+  testMicrophone,
+  startMicrophonePreview,
+  stopMicrophonePreview,
+  audioError,
+} from "./voice";
+import { report, request } from "./control";
 import { Modal } from "./Modal";
 export function Settings({ onClose }: { onClose: () => void }) {
   const s = useStore();
+  const db = (level: number) =>
+    Math.max(-60, Math.min(0, 20 * Math.log10(Math.max(0.001, level))));
+  const levelPercent = ((db(s.microphoneLevel) + 60) / 60) * 100;
+  const thresholdPercent = ((db(s.settings.threshold) + 60) / 60) * 100;
   const [list, setList] = useState<MediaDeviceInfo[]>([]),
     [passphrase, setPassphrase] = useState(""),
-    [test, testing] = useState(false);
+    [test, testing] = useState(false),
+    [audioProblem, setAudioProblem] = useState("");
   const stop = useRef<(() => void) | undefined>(undefined);
+  const mounted = useRef(true);
   useEffect(() => {
-    void devices().then(setList).catch(report);
+    mounted.current = true;
+    let alive = true;
+    const load = () =>
+      void devices()
+        .then((d) => {
+          if (alive) setList(d);
+        })
+        .catch((e) => {
+          if (alive) setAudioProblem(audioError(e).message);
+        });
+    load();
+    void startMicrophonePreview()
+      .then(load)
+      .catch((e) => {
+        if (alive) setAudioProblem(audioError(e).message);
+      });
+    navigator.mediaDevices.addEventListener("devicechange", load);
     return () => {
+      alive = false;
+      mounted.current = false;
+      navigator.mediaDevices.removeEventListener("devicechange", load);
       stop.current?.();
+      stopMicrophonePreview();
     };
   }, []);
   const change = (p: Parameters<typeof s.saveSettings>[0]) => {
     s.saveSettings(p);
-    void refreshSettings().catch(report);
+    setAudioProblem("");
+    void refreshSettings(p).catch((e) =>
+      setAudioProblem(audioError(e).message),
+    );
   };
   return (
     <Modal title="Audio et identité" onClose={onClose}>
+      {audioProblem && <p role="alert">{audioProblem}</p>}
+      <label>
+        Niveau du microphone
+        <div
+          className="microphone-meter"
+          role="meter"
+          aria-label="Niveau du microphone"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(levelPercent)}
+        >
+          <span
+            className="microphone-fill"
+            style={{ width: `${levelPercent}%` }}
+          />
+          {s.settings.mode === "activation" && (
+            <span
+              className="microphone-threshold"
+              style={{ left: `${thresholdPercent}%` }}
+            />
+          )}
+        </div>
+        <small>
+          {s.settings.mode === "activation"
+            ? "La voix est transmise au-dessus du repère du seuil (hors mute)."
+            : "Parlez pour vérifier votre microphone."}
+        </small>
+      </label>
       {(["input", "output"] as const).map((kind) => (
         <label key={kind}>
           {kind === "input" ? "Microphone" : "Sortie audio"}
@@ -30,14 +94,21 @@ export function Settings({ onClose }: { onClose: () => void }) {
             onChange={(e) => change({ [kind]: e.target.value })}
           >
             <option value="">Par défaut</option>
+            {s.settings[kind] &&
+              !list.some((d) => d.deviceId === s.settings[kind]) && (
+                <option value={s.settings[kind]}>
+                  Périphérique déconnecté — choisissez-en un autre
+                </option>
+              )}
             {list
               .filter(
                 (d) =>
                   d.kind === (kind === "input" ? "audioinput" : "audiooutput"),
               )
-              .map((d) => (
+              .map((d, index) => (
                 <option key={d.deviceId} value={d.deviceId}>
-                  {d.label || d.deviceId}
+                  {d.label ||
+                    `${kind === "input" ? "Microphone" : "Sortie audio"} ${index + 1}`}
                 </option>
               ))}
           </select>
@@ -80,20 +151,23 @@ export function Settings({ onClose }: { onClose: () => void }) {
           <input
             value={s.settings.shortcut}
             onChange={(e) => s.saveSettings({ shortcut: e.target.value })}
-            onBlur={() => void refreshSettings().catch(report)}
+            onBlur={() => change({ shortcut: s.settings.shortcut })}
           />
         </label>
       )}
       {s.settings.mode === "activation" && (
         <label>
-          Seuil de voix
+          Seuil d’activation · {Math.round(db(s.settings.threshold))} dB
+          <small>Plus haut = moins sensible aux sons faibles.</small>
           <input
             type="range"
-            min="0.005"
-            max="0.15"
-            step="0.005"
-            value={s.settings.threshold}
-            onChange={(e) => change({ threshold: Number(e.target.value) })}
+            min="-60"
+            max="0"
+            step="1"
+            value={db(s.settings.threshold)}
+            onChange={(e) =>
+              change({ threshold: Math.pow(10, Number(e.target.value) / 20) })
+            }
           />
         </label>
       )}
@@ -103,25 +177,50 @@ export function Settings({ onClose }: { onClose: () => void }) {
           testing(true);
           void testMicrophone()
             .then((fn) => {
+              if (!mounted.current) {
+                fn();
+                return;
+              }
               stop.current = fn;
               setTimeout(() => {
                 fn();
-                testing(false);
+                if (mounted.current) testing(false);
               }, 5000);
             })
             .catch((e) => {
               testing(false);
-              report(e);
+              setAudioProblem(audioError(e).message);
             });
         }}
       >
         Test micro avec retour audio (5 s)
       </button>
       <button
-        onClick={() => window.dispatchEvent(new Event("licra:check-update"))}
+        onClick={() => {
+          onClose();
+          window.dispatchEvent(new Event("licra:check-update"));
+        }}
       >
         Vérifier les mises à jour
       </button>
+      {s.status === "connected" &&
+        s.server.bootstrap_available &&
+        !s.permissions["server.edit"] && (
+          <details>
+            <summary>Administration initiale du serveur</summary>
+            <p>
+              Réservé au propriétaire disposant du token généré sur le serveur.
+            </p>
+            <button
+              onClick={() => {
+                const token = prompt("Token bootstrap administrateur");
+                if (token) void request("CLAIM_OWNER", { token }).catch(report);
+              }}
+            >
+              Réclamer le rôle Owner
+            </button>
+          </details>
+        )}
       <h3>Identité chiffrée</h3>
       <label>
         Passphrase d’export/import

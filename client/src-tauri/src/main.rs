@@ -62,6 +62,27 @@ async fn identity_import(app: tauri::AppHandle, passphrase: String) -> Result<()
 }
 fn main() {
     let result = tauri::Builder::default()
+        .on_permission_request(|webview, kind| {
+            use tauri::webview::{PermissionKind, PermissionResponse};
+            let trusted = webview.label() == "main"
+                && webview
+                    .url()
+                    .map(|url| {
+                        (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
+                            || (matches!(url.scheme(), "http" | "https")
+                                && url.host_str() == Some("tauri.localhost"))
+                            || (cfg!(debug_assertions)
+                                && url.scheme() == "http"
+                                && url.host_str() == Some("localhost")
+                                && url.port() == Some(1420))
+                    })
+                    .unwrap_or(false);
+            if trusted && matches!(kind, PermissionKind::Microphone) {
+                PermissionResponse::Allow
+            } else {
+                PermissionResponse::Default
+            }
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())

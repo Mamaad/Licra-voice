@@ -13,7 +13,14 @@ export function Modal({
     ref.current?.showModal();
   }, []);
   return (
-    <dialog ref={ref} onCancel={onClose} aria-label={title}>
+    <dialog
+      ref={ref}
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+      aria-label={title}
+    >
       <h2>{title}</h2>
       {children}
       <button onClick={onClose}>Fermer</button>

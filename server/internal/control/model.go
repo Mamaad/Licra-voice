@@ -273,7 +273,7 @@ func (s *Server) snapshot(p *client, id string) error {
 	for _, c := range chs {
 		cm[c.ID] = s.permissionMap(p.user.Fingerprint, c.ID)
 	}
-	s.send(p, "SNAPSHOT", id, map[string]any{"server": map[string]string{"name": s.Config.Server.Name, "id": s.ID}, "self_id": p.user.ID, "channels": chs, "users": s.users(), "roles": rs, "permissions": s.permissionMap(p.user.Fingerprint, ""), "channel_permissions": cm})
+	s.send(p, "SNAPSHOT", id, map[string]any{"server": map[string]any{"name": s.Config.Server.Name, "id": s.ID, "bootstrap_available": s.bootstrapAvailable()}, "self_id": p.user.ID, "channels": chs, "users": s.users(), "roles": rs, "permissions": s.permissionMap(p.user.Fingerprint, ""), "channel_permissions": cm})
 	return nil
 }
 func (s *Server) seedPath() string {
@@ -349,4 +349,9 @@ func (s *Server) claim(fp, token string) error {
 		return e
 	}
 	return nil
+}
+
+func (s *Server) bootstrapAvailable() bool {
+	var value string
+	return s.DB.QueryRow("SELECT value FROM server_config WHERE key='bootstrap_hash'").Scan(&value) == nil && value != "consumed"
 }

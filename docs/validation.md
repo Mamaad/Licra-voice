@@ -22,6 +22,10 @@ Vérifications locales effectuées :
   health, diagnostics SQLite, redémarrage et désinstallation avec conservation
   de la configuration et de la base ; migrations concurrentes testées.
 - Charge control plane locale : 50 sessions, résultats JSON conservés.
+- Régressions audio 0.1.1 : le vrai module client est exercé avec un signal
+  PCM connu, sans permission caméra ; vérification du seuil qui coupe/réactive
+  la publication, du niveau micro et de l’indicateur après modification des
+  options et fermeture de la prévisualisation.
 - Test média réel : `npm ci` à la racine, `npx playwright install chromium`,
   `npm run test:media`. Il lance LiveKit officiel et trois clients WebRTC avec
   microphones synthétiques ; vérifie Opus, rooms distinctes, déplacement admin

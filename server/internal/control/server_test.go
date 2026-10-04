@@ -267,3 +267,21 @@ func TestTemporaryChannels(t *testing.T) {
 		t.Fatal("empty temporary channel retained")
 	}
 }
+
+func TestBootstrapAvailability(t *testing.T) {
+	app, host := setup(t)
+	token, err := app.AdminToken(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, before := connectTest(t, host)
+	if before["server"].(map[string]any)["bootstrap_available"] != true {
+		t.Fatal(before["server"])
+	}
+	write(context.Background(), owner, protocol.Message("CLAIM_OWNER", "claim", map[string]string{"token": token}))
+	receive(t, owner, "ACK")
+	_, after := connectTest(t, host)
+	if after["server"].(map[string]any)["bootstrap_available"] != false {
+		t.Fatal(after["server"])
+	}
+}

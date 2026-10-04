@@ -11,13 +11,16 @@ Depuis le bundle serveur Linux x86_64 de [GitHub Releases](https://github.com/Ma
 ```bash
 tar -xzf licra-server-linux-x86_64.tar.gz
 cd licra
-./scripts/install-server.sh
+./start.sh
 ~/.local/bin/licra-server admin-token
 ```
 
 Exécuter sous un utilisateur normal. Ouvrir `64738/TCP`, `64739/UDP`,
 `64740/TCP`. Pour un autre port initial : `BASE_PORT=25000 ./scripts/install-server.sh`.
-L’installateur conserve une configuration existante. Aucun Docker ni Redis.
+L’installateur conserve une configuration existante. `./start.sh` installe si
+nécessaire puis active les deux services avec redémarrage en cas de panne.
+`./stop.sh` les arrête et désactive leur démarrage automatique en conservant
+les données ; `./start.sh` le réactive. Les scripts se lancent sans sudo. Aucun Docker ni Redis.
 `systemd --user` démarre deux services ; le boot sans session requiert
 `Linger=yes`, que seul un administrateur système peut activer.
 
