@@ -12,8 +12,12 @@ Vérifications locales effectuées :
   génération/expiration tokens LiveKit et révocation d’accès.
 - `go test -race ./...` et build du serveur ; détails exacts dans les sorties CI.
 - TypeScript/React : `npm run build`, tests de parsing IP/hostname/TLS/IPv6.
-- Rust : export/import AES-GCM/Argon2 et mauvaise passphrase ; vérification
-  native Windows via cargo check x86_64-pc-windows-gnu sur ce poste Linux.
+- Rust : export/import AES-GCM/Argon2, mauvaise passphrase et persistance
+  de l’identité ; tests natifs Windows et compilation Tauri réussis en CI.
+- Signature de l’installateur : vérifiée avec le même vérificateur que Tauri ;
+  une copie altérée est refusée. Le workflow vérifie également installation
+  par utilisateur, réinstallation en mode update et conservation des données
+  lors d’une désinstallation silencieuse.
 - Charge control plane locale : 50 sessions, résultats JSON conservés.
 - Test média réel : `npm ci` à la racine, `npx playwright install chromium`,
   `npm run test:media`. Il lance LiveKit officiel et trois clients WebRTC avec
