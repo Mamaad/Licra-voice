@@ -211,6 +211,7 @@ try {
       }),
     channel,
   );
+  await guest.waitForFunction(async()=>{const s=await window.ui.voice.voiceDiagnostics();return s.connected&&!!s.codec;});
   await guest.evaluate(
     (id) =>
       window.ui.control.request("JOIN_CHANNEL", {
@@ -230,6 +231,129 @@ try {
   );
   await sleep(500);
   await fits(page);
+  assert.equal(
+    await page.getByRole("textbox", { name: "Rechercher un membre" }).count(),
+    0,
+  );
+  assert.equal(await page.locator(".core-logo strong").textContent(), "Licra");
+  assert.equal(await page.locator(".sidebar-version").count(), 0);
+  const namedRow = (name) =>
+    page
+      .locator(".channel-row")
+      .filter({
+        has: page.locator(".channel-label strong", {
+          hasText: new RegExp(`^${name}$`),
+        }),
+      });
+  const chill = await page.evaluate(
+    () =>
+      window.ui.store.getState().channels.find((c) => c.name === "Chill").id,
+  );
+  await page
+    .locator(".member-list .user-row")
+    .filter({ hasText: "Alice" })
+    .dragTo(namedRow("Chill"));
+  await page.waitForFunction(
+    (id) =>
+      window.ui.store.getState().users.find((u) => u.nickname === "Alice")
+        .channel_id === id,
+    chill,
+  );
+  await guest.waitForFunction(async()=>{const s=await window.ui.voice.voiceDiagnostics();return s.connected&&!!s.codec;});
+  await page
+    .locator(".channel-tree .user-row")
+    .filter({ hasText: "Alice" })
+    .dragTo(page.locator(".channel-row.selected"));
+  await page.waitForFunction(
+    (id) =>
+      window.ui.store.getState().users.find((u) => u.nickname === "Alice")
+        .channel_id === id,
+    channel,
+  );
+  await guest.waitForFunction(async()=>{const s=await window.ui.voice.voiceDiagnostics();return s.connected&&!!s.codec;});
+  await guest
+    .locator(".channel-tree .user-row")
+    .filter({ hasText: "Alice" })
+    .dragTo(
+      guest
+        .locator(".channel-row")
+        .filter({
+          has: guest.locator(".channel-label strong", { hasText: /^Chill$/ }),
+        }),
+    );
+  await guest.waitForFunction(
+    (id) =>
+      window.ui.store.getState().users.find((u) => u.nickname === "Alice")
+        .channel_id === id,
+    chill,
+  );
+  await guest.waitForFunction(async()=>{const s=await window.ui.voice.voiceDiagnostics();return s.connected&&!!s.codec;});
+  await guest.evaluate(
+    (id) =>
+      window.ui.control.request("JOIN_CHANNEL", {
+        channel_id: id,
+        password: "",
+      }),
+    channel,
+  );
+  await guest.waitForFunction(async()=>{const s=await window.ui.voice.voiceDiagnostics();return s.connected&&!!s.codec;});
+  const rejoinsBeforeOrder = await page.evaluate(()=>window.ui.events.filter(type=>type==="VOICE_REJOIN_REQUIRED").length);
+  await namedRow("Development")
+    .locator(".channel-label")
+    .dragTo(namedRow("Chill"), { targetPosition: { x: 100, y: 3 } });
+  await page.waitForFunction(() => {
+    const s = window.ui.store.getState(),
+      a = s.channels.find((c) => c.name === "Development"),
+      b = s.channels.find((c) => c.name === "Chill");
+    return a.parent_id === b.parent_id && a.sort_order < b.sort_order;
+  });
+  assert.equal(await page.evaluate(()=>window.ui.events.filter(type=>type==="VOICE_REJOIN_REQUIRED").length), rejoinsBeforeOrder);
+  await namedRow("Development")
+    .locator(".channel-label")
+    .dragTo(namedRow("Chill"));
+  await page.waitForFunction(() => {
+    const s = window.ui.store.getState();
+    return (
+      s.channels.find((c) => c.name === "Development").parent_id ===
+      s.channels.find((c) => c.name === "Chill").id
+    );
+  });
+  // Cycles and guests must be rejected before sending any update.
+  await namedRow("Chill")
+    .locator(".channel-label")
+    .dragTo(namedRow("Development"));
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.ui.store.getState().channels.find((c) => c.name === "Chill")
+          .parent_id,
+    ),
+    null,
+  );
+  assert.equal(
+    await guest.locator(".channel-label[draggable=true]").count(),
+    0,
+  );
+  await page.getByRole("button", { name: /Connecté/ }).click();
+  const statistics = page.getByRole("dialog", { name: "Statistiques vocales" });
+  await statistics.waitFor();
+  await page.waitForFunction(() => {
+    const d = document.querySelector(
+      'dialog[aria-label="Statistiques vocales"]',
+    );
+    return (
+      !!d &&
+      Array.from(d.querySelectorAll(".info-grid div")).some(
+        (el) =>
+          el.textContent.includes("Paquets reçus") &&
+          !el.textContent.includes("Non mesuré"),
+      )
+    );
+  });
+  await sleep(1200);
+  await fits(page);
+  await page.screenshot({ path: join(out, "voice-statistics-1440.png") });
+  await page.keyboard.press("Escape");
   await page.screenshot({ path: join(out, "channel-1440.png") });
   await page
     .locator(".member-list .user-row")
@@ -365,7 +489,7 @@ try {
   assert.deepEqual(errors, []);
   assert.equal(await page.locator(".error-banner").count(), 0);
   console.log(
-    "CORE UI checks passed: real identity handshake, channel CRUD, roles, favourites, context volume, master volume, activation threshold, guest permissions, updater, 1000/1100/1440/1920/3840 layouts.",
+    "Licra UI checks passed: drag/drop, channel order, voice statistics, real identity handshake, channel CRUD, roles, favourites, context volume, master volume, activation threshold, guest permissions, updater, 1000/1100/1440/1920/3840 layouts.",
   );
 } finally {
   await browser?.close();

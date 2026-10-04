@@ -1,4 +1,4 @@
-import { useState, type ReactNode, type MouseEvent } from "react";
+import { useEffect, useState, type ReactNode, type MouseEvent } from "react";
 import { useStore, type Favorite } from "./store";
 import type { Channel, User } from "./types";
 import {
@@ -7,8 +7,10 @@ import {
   setMasterVolume,
   toggleMute,
   toggleDeafen,
+  voiceDiagnostics,
 } from "./voice";
-import { report } from "./control";
+import { report, request } from "./control";
+import { Modal } from "./Modal";
 import {
   Icon,
   IconButton,
@@ -147,7 +149,6 @@ export function ServerSidebar({
         <Icon name="plus" />
         Ajouter un serveur
       </button>
-      <div className="sidebar-version">LICRA · VOIX SANS COMPTE</div>
     </aside>
   );
 }
@@ -170,13 +171,10 @@ export function UserRow({
   return (
     <button
       className={`user-row ${compact ? "compact" : ""} ${selected ? "selected" : ""} ${talking ? "talking" : ""}`}
-      draggable={
-        !!scope[
-          user.id === s.self_id ? "channel.move_self" : "channel.move_others"
-        ]
-      }
+      draggable={user.id === s.self_id || !!scope["channel.move_others"]}
       onDragStart={(e) => {
         e.dataTransfer.setData("text/plain", user.id);
+        e.dataTransfer.setData("application/x-licra-user", user.id);
         e.dataTransfer.effectAllowed = "move";
         e.currentTarget.classList.add("dragging");
       }}
@@ -203,24 +201,126 @@ export function UserRow({
     </button>
   );
 }
+export type DragItem = { kind: "user" | "channel"; id: string };
+export type DropPosition = "before" | "inside" | "after";
+export function channelDropPlan(
+  channels: Channel[],
+  id: string,
+  target: Channel | null,
+  position: DropPosition,
+): Channel[] | null {
+  const moved = channels.find((c) => c.id === id);
+  if (!moved || target?.id === id) return null;
+  const parent = target
+    ? position === "inside"
+      ? target.id
+      : target.parent_id
+    : null;
+  let cursor = parent;
+  while (cursor) {
+    if (cursor === id) return null;
+    const c = channels.find((c) => c.id === cursor);
+    if (!c) return null;
+    if (moved.is_permanent && !c.is_permanent) return null;
+    cursor = c.parent_id;
+  }
+  const siblings = channels
+    .filter((c) => c.id !== id && c.parent_id === parent)
+    .sort(
+      (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name),
+    );
+  const index =
+    target && position !== "inside"
+      ? siblings.findIndex((c) => c.id === target.id) +
+        (position === "after" ? 1 : 0)
+      : siblings.length;
+  const before = siblings[index - 1]?.sort_order,
+    after = siblings[index]?.sort_order;
+  const order =
+    before === undefined
+      ? (after ?? 0) - 1024
+      : after === undefined
+        ? before + 1024
+        : Math.floor((before + after) / 2);
+  const next = { ...moved, parent_id: parent, sort_order: order };
+  if (
+    (before === undefined || order > before) &&
+    (after === undefined || order < after) &&
+    order >= -2147483648 &&
+    order <= 2147483647
+  )
+    return [next];
+  siblings.splice(index, 0, next);
+  return siblings
+    .map((c, i) => ({ ...c, sort_order: i * 1024 }))
+    .filter(
+      (c) =>
+        c.id === id ||
+        c.sort_order !== channels.find((x) => x.id === c.id)?.sort_order,
+    );
+}
 export function ChannelTree({
   onJoin,
   onContext,
   onUserContext,
   onMove,
   onCreate,
+  drag,
+  onChannelMove,
 }: {
   onJoin: (c: Channel) => void;
   onContext: (e: MouseEvent, c: Channel) => void;
   onUserContext: (e: MouseEvent, u: User) => void;
   onMove: (id: string, c: Channel) => void;
   onCreate: (parent?: string) => void;
+  drag: DragItem | null;
+  onChannelMove: (
+    id: string,
+    target: Channel | null,
+    position: DropPosition,
+  ) => void;
 }) {
   const s = useStore(),
     [closed, setClosed] = useState<Record<string, boolean>>({}),
-    [target, setTarget] = useState<{ id: string; valid: boolean } | null>(null),
-    [selectedUser, setSelectedUser] = useState(""),
-    [dragId, setDragId] = useState("");
+    [target, setTarget] = useState<{
+      id: string;
+      valid: boolean;
+      position: DropPosition;
+    } | null>(null),
+    [selectedUser, setSelectedUser] = useState("");
+  function canDrop(c: Channel | null, position: DropPosition) {
+    if (!drag) return false;
+    if (drag.kind === "channel") {
+      const plan = channelDropPlan(s.channels, drag.id, c, position);
+      return (
+        !!plan &&
+        plan.every(
+          (item) =>
+            !!s.channel_permissions[item.id]?.["channel.edit"] &&
+            !!(
+              item.parent_id
+                ? s.channel_permissions[item.parent_id]
+                : s.permissions
+            )?.["channel.edit"],
+        )
+      );
+    }
+    if (!c) return false;
+    const u = s.users.find((u) => u.id === drag.id);
+    if (!u || u.channel_id === c.id) return false;
+    const self = u.id === s.self_id,
+      source = s.channel_permissions[u.channel_id] ?? s.permissions,
+      p = s.channel_permissions[c.id] ?? {};
+    return (
+      !!p[self ? "channel.move_self" : "channel.move_others"] &&
+      (self || !!source["channel.move_others"]) &&
+      (!self || !!p["channel.join"]) &&
+      (!c.max_users ||
+        s.users.filter((u) => u.channel_id === c.id).length < c.max_users ||
+        !!p["channel.join_full"]) &&
+      (self || !c.has_password || !!p["channel.join_password_bypass"])
+    );
+  }
   function tree(parent: string | null, depth = 0): ReactNode {
     if (depth > 64) return null;
     return s.channels
@@ -236,31 +336,38 @@ export function ChannelTree({
         return (
           <div className="channel-branch" key={c.id}>
             <div
-              className={`channel-row ${s.selected === c.id ? "selected" : ""} ${target?.id === c.id ? (target.valid ? "drop-valid" : "drop-invalid") : ""} ${full ? "full" : ""}`}
+              className={`channel-row ${s.selected === c.id ? "selected" : ""} ${target?.id === c.id ? `${target.valid ? "drop-valid" : "drop-invalid"} drop-${target.position}` : ""} ${full ? "full" : ""}`}
               onDragOver={(e) => {
                 e.preventDefault();
-                const self = s.self_id === dragId,
-                  u = s.users.find((u) => u.id === dragId),
-                  source =
-                    s.channel_permissions[u?.channel_id ?? ""] ?? s.permissions;
-                const valid =
-                  !!u &&
-                  !!source[
-                    self ? "channel.move_self" : "channel.move_others"
-                  ] &&
-                  !!permission[
-                    self ? "channel.move_self" : "channel.move_others"
-                  ] &&
-                  (!self || !!permission["channel.join"]) &&
-                  (!full || !!permission["channel.join_full"]);
-                setTarget({ id: c.id, valid });
+                e.stopPropagation();
+                const rect = e.currentTarget.getBoundingClientRect(),
+                  y = (e.clientY - rect.top) / rect.height;
+                const position: DropPosition =
+                  drag?.kind === "channel"
+                    ? y < 0.25
+                      ? "before"
+                      : y > 0.75
+                        ? "after"
+                        : "inside"
+                    : "inside";
+                const valid = canDrop(c, position);
+                setTarget({ id: c.id, valid, position });
                 e.dataTransfer.dropEffect = valid ? "move" : "none";
               }}
-              onDragLeave={() => setTarget(null)}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node))
+                  setTarget(null);
+              }}
               onDrop={(e) => {
                 e.preventDefault();
+                e.stopPropagation();
+                const position =
+                  target?.id === c.id ? target.position : "inside";
+                if (canDrop(c, position) && drag) {
+                  if (drag.kind === "user") onMove(drag.id, c);
+                  else onChannelMove(drag.id, c, position);
+                }
                 setTarget(null);
-                onMove(e.dataTransfer.getData("text/plain"), c);
               }}
               onContextMenu={(e) => onContext(e, c)}
             >
@@ -271,6 +378,12 @@ export function ChannelTree({
                 onClick={() => setClosed({ ...closed, [c.id]: !closed[c.id] })}
               />
               <button
+                draggable={!!permission["channel.edit"]}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("application/x-licra-channel", c.id);
+                  e.dataTransfer.setData("text/plain", c.id);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
                 className="channel-label"
                 onClick={() => s.set({ selected: c.id })}
                 onDoubleClick={() => onJoin(c)}
@@ -312,14 +425,7 @@ export function ChannelTree({
       });
   }
   return (
-    <aside
-      className="channel-tree"
-      onDragStart={(e) => setDragId(e.dataTransfer.getData("text/plain"))}
-      onDragEnd={() => {
-        setDragId("");
-        setTarget(null);
-      }}
-    >
+    <aside className="channel-tree" onDragEnd={() => setTarget(null)}>
       <div className="tree-heading">
         <span>
           <Icon name="channel" />
@@ -335,6 +441,25 @@ export function ChannelTree({
       </div>
       <div className="tree-scroll">
         {tree(null)}
+        {drag?.kind === "channel" && (
+          <div
+            className={`root-drop ${canDrop(null, "inside") ? "" : "drop-invalid"}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = canDrop(null, "inside")
+                ? "move"
+                : "none";
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (canDrop(null, "inside"))
+                onChannelMove(drag.id, null, "inside");
+              setTarget(null);
+            }}
+          >
+            Déplacer à la racine
+          </div>
+        )}
         {!!s.users.filter((u) => !u.channel_id).length && (
           <section className="unassigned">
             <h3>Hors salon</h3>
@@ -362,7 +487,8 @@ export function BottomAudioBar({ onSettings }: { onSettings: () => void }) {
   const s = useStore(),
     self = s.users.find((u) => u.id === s.self_id),
     [list, setList] = useState<MediaDeviceInfo[]>([]),
-    [deviceOpen, setDeviceOpen] = useState(false);
+    [deviceOpen, setDeviceOpen] = useState(false),
+    [statistics, showStatistics] = useState(false);
   const level = Math.max(
     0,
     Math.min(
@@ -389,15 +515,21 @@ export function BottomAudioBar({ onSettings }: { onSettings: () => void }) {
               localStorage.getItem("nickname") ||
               "Votre identité"}
           </strong>
-          <small>
+          <button
+            className="connection-status"
+            disabled={s.status !== "connected"}
+            title="Statistiques de connexion vocale"
+            onClick={() => showStatistics(true)}
+          >
             <StatusDot status={s.status} />
             {connectionLabels[s.status] ?? s.status}
             {s.connectionRTT !== null && s.status === "connected" && (
               <span className="technical"> · {s.connectionRTT} ms</span>
             )}
-          </small>
+          </button>
         </div>
       </div>
+      {statistics && <VoiceStatistics onClose={() => showStatistics(false)} />}
       <div className="audio-controls">
         <div className="input-control">
           <div
@@ -482,5 +614,83 @@ export function BottomAudioBar({ onSettings }: { onSettings: () => void }) {
         </label>
       </div>
     </footer>
+  );
+}
+
+function VoiceStatistics({ onClose }: { onClose: () => void }) {
+  const s = useStore(),
+    [stats, setStats] = useState<Awaited<
+      ReturnType<typeof voiceDiagnostics>
+    > | null>(null),
+    [error, setError] = useState("");
+  useEffect(() => {
+    let alive = true,
+      busy = false;
+    const refresh = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        const result = await voiceDiagnostics();
+        if (alive) {
+          setStats(result);
+          setError("");
+        }
+        await request("PING");
+      } catch (e) {
+        if (alive) setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        busy = false;
+      }
+    };
+    void refresh();
+    const timer = setInterval(() => void refresh(), 1000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
+  const fields = [
+    ["RTT contrôle", s.connectionRTT == null ? null : `${s.connectionRTT} ms`],
+    ["RTT média", stats?.rtt_ms == null ? null : `${stats.rtt_ms} ms`],
+    [
+      "Jitter réception",
+      stats?.jitter_ms == null ? null : `${stats.jitter_ms} ms`,
+    ],
+    [
+      "Paquets perdus (réception)",
+      stats?.packet_loss_percent == null
+        ? null
+        : `${stats.packet_loss_percent} %`,
+    ],
+    [
+      "Débit reçu",
+      stats?.receive_kbps == null ? null : `${stats.receive_kbps} kb/s`,
+    ],
+    [
+      "Débit envoyé",
+      stats?.send_kbps == null ? null : `${stats.send_kbps} kb/s`,
+    ],
+    ["Transport", stats?.transport?.toUpperCase()],
+    ["Codec", stats?.codec],
+    ["Paquets reçus", stats?.packets_received],
+    ["Paquets perdus", stats?.packets_lost],
+  ];
+  return (
+    <Modal title="Statistiques vocales" onClose={onClose}>
+      <p>
+        {stats?.connected
+          ? "Mesures WebRTC actualisées chaque seconde."
+          : "Rejoignez un salon vocal pour mesurer le transport média."}
+      </p>
+      {error && <p role="alert">{error}</p>}
+      <div className="info-grid voice-statistics">
+        {fields.map(([label, value]) => (
+          <div key={label}>
+            {label}
+            <strong>{value ?? "Non mesuré"}</strong>
+          </div>
+        ))}
+      </div>
+    </Modal>
   );
 }

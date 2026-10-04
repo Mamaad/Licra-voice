@@ -47,6 +47,19 @@ Refonte CORE 0.1.2 :
   aucun faux état ou périphérique n’est inclus dans le bundle de production.
 - Aucun mode Ultra Low Latency ; profils Opus existants et diagnostics réels.
 
+Version 0.1.3 :
+
+- Glisser-déposer : déplacement d’un invité par Owner depuis la liste et l’arbre,
+  déplacement de soi-même, ordre des salons, changement de parent, refus des
+  cycles et commandes indisponibles pour les invités sans permission d’édition.
+- Un changement d’ordre ne produit aucun événement `VOICE_REJOIN_REQUIRED`.
+- Clic « Connecté » : mesures WebRTC réelles, paquets reçus et débits dans la
+  fenêtre de statistiques ; capture `core/voice-statistics-1440.png`.
+- CI Windows : installation sur un disque secondaire dans un chemin avec espaces,
+  mise à jour `/UPDATE` conservant ce chemin et données AppData préservées.
+- L’identité et les paramètres restent dans le profil Windows ; choisir un autre
+  disque pour le programme ne déplace pas AppData.
+
 À valider avant le statut « utilisable quotidiennement » :
 
 1. Installer le bundle Linux sous un utilisateur d’une Ubuntu 24.04 fraîche,

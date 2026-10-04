@@ -434,19 +434,7 @@ button[aria-pressed="true"]:not(.permission-option) {
   align-items: center;
   gap: 5px;
 }
-.header-search {
-  display: flex;
-  align-items: center;
-  margin: 0;
-  gap: 7px;
-}
-.header-search input {
-  width: 165px !important;
-  background: transparent !important;
-  border-color: transparent !important;
-  font-size: 12px;
-  margin: 0 !important;
-}
+
 .window-controls {
   display: flex;
   border-left: 1px solid var(--border);
@@ -1574,9 +1562,7 @@ details p {
     --sidebar: 180px;
     --tree: 285px;
   }
-  .header-search input {
-    display: none !important;
-  }
+
   .topbar-server > strong {
     font-size: 16px;
   }
@@ -1733,4 +1719,74 @@ dialog[open] {
   letter-spacing: 1.4px;
   color: var(--cyan);
   margin-bottom: 16px !important;
+}
+
+.core-logo strong {
+  letter-spacing: 1px;
+  font-size: 23px;
+}
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 4px;
+  padding: 0;
+  min-height: 24px;
+  font-size: 11px;
+  color: var(--secondary);
+  border: 0;
+  background: transparent;
+}
+.connection-status:hover:not(:disabled) {
+  background: transparent;
+  color: var(--cyan);
+}
+.connection-status:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.voice-statistics {
+  margin-top: 20px;
+}
+.channel-row {
+  position: relative;
+}
+.channel-row.drop-before:before,
+.channel-row.drop-after:after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--cyan);
+  z-index: 1;
+}
+.channel-row.drop-before:before {
+  top: -3px;
+}
+.channel-row.drop-after:after {
+  bottom: -3px;
+}
+.channel-row.drop-invalid:before,
+.channel-row.drop-invalid:after {
+  background: var(--red);
+}
+.channel-label[draggable="true"] {
+  cursor: grab;
+}
+.channel-label[draggable="true"]:active {
+  cursor: grabbing;
+}
+.root-drop {
+  border: 1px dashed var(--blue);
+  border-radius: 5px;
+  padding: 14px;
+  text-align: center;
+  color: var(--cyan);
+  margin: 12px 0;
+  font-size: 12px;
+}
+.root-drop.drop-invalid {
+  border-color: var(--red);
+  color: var(--red);
 }

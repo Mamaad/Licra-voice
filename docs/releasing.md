@@ -39,11 +39,11 @@ modification des versions et des notes, pousser le commit puis son tag :
 
 ```bash
 git push origin main
-git tag v0.1.2
-git push origin v0.1.2
+git tag v0.1.3
+git push origin v0.1.3
 ```
 
-Cet exemple suppose que les fichiers de version indiquent déjà `0.1.2`.
+Cet exemple suppose que les fichiers de version indiquent déjà `0.1.3`.
 Attendre le succès du workflow « Signed releases ». Il charge le setup signé et
 `latest.json` sur GitHub ; le bouton « Mettre à jour » du client recherche cette
 release, puis propose téléchargement, installation et relance. Depuis 0.1.0,

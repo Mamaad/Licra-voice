@@ -4,6 +4,7 @@ import {createRoot} from 'react-dom/client';
 import {App} from '/src/App.tsx';
 import {useStore} from '/src/store.ts';
 import * as control from '/src/control.ts';
+import * as voice from '/src/voice.ts';
 import '/src/style.css';
 // Test-only replacement for native Ed25519/IPC; UI, control and audio remain production modules.
 const keys=await crypto.subtle.generateKey({name:'Ed25519'},true,['sign','verify']);
@@ -16,6 +17,7 @@ window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebvie
  if(cmd.startsWith('plugin:global-shortcut|')||cmd.startsWith('plugin:window|'))return;
  throw new Error('Unexpected native operation in UI verification: '+cmd);
 }};
-window.ui={store:useStore,control};
+window.ui={store:useStore,control,voice,events:[]};
+const NativeWebSocket=window.WebSocket;window.WebSocket=class extends NativeWebSocket{constructor(...args){super(...args);this.addEventListener("message",event=>{if(typeof event.data==='string')window.ui.events.push(JSON.parse(event.data).type);});}};
 createRoot(document.getElementById('root')).render(React.createElement(App));
 </script></body></html>

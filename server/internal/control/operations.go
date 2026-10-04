@@ -128,12 +128,18 @@ func (s *Server) operation(ctx context.Context, p *client, m protocol.Envelope) 
 				return
 			}
 		}
+		previousProfile, previousParent := "", ""
 		permission := "channel.create"
 		if m.Type == "UPDATE_CHANNEL" {
 			permission = "channel.edit"
-			if _, ok := s.channel(v.ID); !ok {
+			if previous, ok := s.channel(v.ID); !ok {
 				s.sendError(p, id, "CHANNEL_NOT_FOUND")
 				return
+			} else {
+				previousProfile = previous.AudioProfile
+				if previous.ParentID != nil {
+					previousParent = *previous.ParentID
+				}
 			}
 			if !s.require(p, id, permission, v.ID) {
 				return
@@ -205,8 +211,10 @@ func (s *Server) operation(ctx context.Context, p *client, m protocol.Envelope) 
 			kind = "CHANNEL_UPDATED"
 		}
 		s.broadcast(kind, ch)
-		s.permissionsUpdated()
-		if m.Type == "UPDATE_CHANNEL" {
+		if m.Type == "CREATE_CHANNEL" || previousParent != scope {
+			s.permissionsUpdated()
+		}
+		if m.Type == "UPDATE_CHANNEL" && previousProfile != ch.AudioProfile {
 			for _, u := range s.clients {
 				if u.user.ChannelID == ch.ID {
 					s.send(u, "VOICE_REJOIN_REQUIRED", "", nil)

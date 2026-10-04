@@ -426,54 +426,114 @@ export function setMasterVolume(value: number) {
   localStorage.setItem("masterVolume", String(value));
   localVolumes();
 }
+let diagnosticSample:
+  | { generation: number; at: number; received: number; sent: number }
+  | undefined;
 export async function voiceDiagnostics() {
-  if (!room) return { connected: false };
-  const result: Record<string, unknown> = {
-    connected: true,
-    remoteParticipants: room.remoteParticipants.size,
-  };
+  if (!room) {
+    diagnosticSample = undefined;
+    return {
+      connected: false,
+      remoteParticipants: 0,
+      codec: null,
+      transport: null,
+      rtt_ms: null,
+      jitter_ms: null,
+      packet_loss_percent: null,
+      packets_received: null,
+      packets_lost: null,
+      receive_kbps: null,
+      send_kbps: null,
+    };
+  }
+  const current = room,
+    epoch = generation;
+  const tracks = [
+    ...current.localParticipant.audioTrackPublications.values(),
+    ...Array.from(current.remoteParticipants.values()).flatMap((p) => [
+      ...p.audioTrackPublications.values(),
+    ]),
+  ];
+  const reports = await Promise.all(
+    tracks.map((p) => p.track?.getRTCStatsReport()),
+  );
   let received = 0,
     lost = 0,
     jitter = 0,
     codec = "",
     transport = "",
-    rtt = 0;
-  for (const participant of room.remoteParticipants.values())
-    for (const publication of participant.audioTrackPublications.values()) {
-      const stats = await publication.track?.getRTCStatsReport();
-      if (!stats) continue;
-      stats.forEach((item: any) => {
-        if (
-          item.type === "inbound-rtp" &&
-          (item.kind === "audio" || item.mediaType === "audio")
-        ) {
-          received += item.packetsReceived ?? 0;
-          lost += Math.max(0, item.packetsLost ?? 0);
-          jitter = Math.max(jitter, item.jitter ?? 0);
-        }
-        if (
-          item.type === "codec" &&
-          item.mimeType?.toLowerCase().includes("opus")
-        )
-          codec = item.mimeType;
-        if (
-          item.type === "candidate-pair" &&
-          item.state === "succeeded" &&
-          (item.nominated || item.selected)
-        ) {
-          rtt = item.currentRoundTripTime ?? 0;
-          const local = stats.get(item.localCandidateId);
-          transport = local?.protocol ?? "";
-        }
-      });
-    }
+    rtt: number | null = null,
+    bytesReceived = 0,
+    bytesSent = 0,
+    inbound = false,
+    outbound = false;
+  const seen = new Set<string>();
+  for (const stats of reports) {
+    if (!stats) continue;
+    stats.forEach((item: any) => {
+      if (seen.has(item.id)) return;
+      seen.add(item.id);
+      if (
+        item.type === "inbound-rtp" &&
+        (item.kind === "audio" || item.mediaType === "audio")
+      ) {
+        inbound = true;
+        received += item.packetsReceived ?? 0;
+        lost += Math.max(0, item.packetsLost ?? 0);
+        jitter = Math.max(jitter, item.jitter ?? 0);
+        bytesReceived += item.bytesReceived ?? 0;
+      }
+      if (
+        item.type === "outbound-rtp" &&
+        (item.kind === "audio" || item.mediaType === "audio")
+      ) {
+        outbound = true;
+        bytesSent += item.bytesSent ?? 0;
+      }
+      if (
+        item.type === "codec" &&
+        item.mimeType?.toLowerCase().includes("opus")
+      )
+        codec = item.mimeType;
+      if (
+        item.type === "candidate-pair" &&
+        item.state === "succeeded" &&
+        (item.nominated || item.selected)
+      ) {
+        if (item.currentRoundTripTime != null)
+          rtt = Math.round(item.currentRoundTripTime * 1000);
+        transport = stats.get(item.localCandidateId)?.protocol ?? transport;
+      }
+    });
+  }
+  const at = performance.now(),
+    previous = diagnosticSample,
+    elapsed = previous?.generation === epoch ? (at - previous.at) / 1000 : 0;
+  const rate = (bytes: number, old: number | undefined) =>
+    elapsed > 0 && old !== undefined && bytes >= old
+      ? +(((bytes - old) * 8) / elapsed / 1000).toFixed(1)
+      : null;
+  const receive_kbps = inbound ? rate(bytesReceived, previous?.received) : null,
+    send_kbps = outbound ? rate(bytesSent, previous?.sent) : null;
+  if (room === current && epoch === generation)
+    diagnosticSample = {
+      generation: epoch,
+      at,
+      received: bytesReceived,
+      sent: bytesSent,
+    };
   return {
-    ...result,
+    connected: room === current && epoch === generation,
+    remoteParticipants: current.remoteParticipants.size,
     codec: codec || null,
     transport: transport || null,
-    rtt_ms: rtt ? Math.round(rtt * 1000) : null,
-    jitter_ms: received ? +(jitter * 1000).toFixed(2) : null,
+    rtt_ms: rtt,
+    jitter_ms: inbound ? +(jitter * 1000).toFixed(2) : null,
     packet_loss_percent:
       received + lost ? +((lost / (received + lost)) * 100).toFixed(2) : null,
+    packets_received: inbound ? received : null,
+    packets_lost: inbound ? lost : null,
+    receive_kbps,
+    send_kbps,
   };
 }

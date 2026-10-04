@@ -16,7 +16,15 @@ import { Updater } from "./Updater";
 import { Admin, ChannelEditor } from "./Admin";
 import { Modal, ActionDialog, promptDialog, confirmDialog } from "./Modal";
 import { Icon, IconButton, Avatar, StatusDot, connectionLabels } from "./ui";
-import { ServerSidebar, ChannelTree, BottomAudioBar, UserRow } from "./Shell";
+import {
+  ServerSidebar,
+  ChannelTree,
+  BottomAudioBar,
+  UserRow,
+  channelDropPlan,
+  type DragItem,
+  type DropPosition,
+} from "./Shell";
 import { ContextMenu } from "./ContextMenu";
 import { CLIENT_VERSION } from "./version";
 export function App() {
@@ -26,7 +34,7 @@ export function App() {
     [view, setView] = useState("connection"),
     [settings, showSettings] = useState(false),
     [admin, showAdmin] = useState(false),
-    [search, setSearch] = useState(""),
+    [drag, setDrag] = useState<DragItem | null>(null),
     [sort, setSort] = useState("name");
   const [editor, setEditor] = useState<{
       channel?: Channel;
@@ -50,7 +58,6 @@ export function App() {
     permissions = s.channel_permissions[selected?.id ?? ""] ?? s.permissions;
   const members = s.users
     .filter((u) => u.channel_id === selected?.id)
-    .filter((u) => u.nickname.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) =>
       sort === "voice"
         ? Number(s.talking.includes(b.id)) - Number(s.talking.includes(a.id)) ||
@@ -102,6 +109,25 @@ export function App() {
     void request("MOVE_USER", { user_id: id, channel_id: c.id })
       .then(() => setMenu(null))
       .catch(report);
+  }
+  async function reorderChannel(
+    id: string,
+    target: Channel | null,
+    position: DropPosition,
+  ) {
+    const plan = channelDropPlan(
+      useStore.getState().channels,
+      id,
+      target,
+      position,
+    );
+    if (!plan) return;
+    try {
+      for (const c of plan) await request("UPDATE_CHANNEL", c);
+    } catch (e) {
+      report(e);
+    }
+    setDrag(null);
   }
   function context(e: MouseEvent, value: User | Channel) {
     e.preventDefault();
@@ -190,6 +216,13 @@ export function App() {
   const native = "__TAURI_INTERNALS__" in window;
   return (
     <main
+      onDragStart={(e) => {
+        const channel = e.dataTransfer.getData("application/x-licra-channel"),
+          user = e.dataTransfer.getData("application/x-licra-user");
+        if (channel || user)
+          setDrag({ kind: channel ? "channel" : "user", id: channel || user });
+      }}
+      onDragEnd={() => setDrag(null)}
       className={`app-shell ${s.status === "connected" && view === "channels" ? "in-server" : ""}`}
     >
       <ServerSidebar
@@ -220,15 +253,6 @@ export function App() {
         <div className="topbar-actions">
           {s.status === "connected" && (
             <>
-              <label className="header-search">
-                <Icon name="search" />
-                <input
-                  aria-label="Rechercher un membre"
-                  placeholder="Rechercher un membre…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </label>
               {s.permissions["role.view"] && (
                 <IconButton
                   icon="shield"
@@ -308,6 +332,8 @@ export function App() {
         {s.status === "connected" && view === "channels" ? (
           <>
             <ChannelTree
+              drag={drag}
+              onChannelMove={reorderChannel}
               onJoin={(c) => void join(c)}
               onContext={context}
               onUserContext={context}
@@ -426,15 +452,10 @@ export function App() {
                       {!members.length && (
                         <div className="empty-state">
                           <Icon name="users" />
-                          <h3>
-                            {search
-                              ? "Aucun membre trouvé"
-                              : "La conversation commence ici"}
-                          </h3>
+                          <h3>La conversation commence ici</h3>
                           <p>
-                            {search
-                              ? "Essayez un autre pseudonyme."
-                              : "Rejoignez le salon ou invitez vos amis avec l’adresse du serveur."}
+                            Rejoignez le salon ou invitez vos amis avec
+                            l’adresse du serveur.
                           </p>
                         </div>
                       )}

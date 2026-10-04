@@ -216,8 +216,7 @@ export function Logo() {
           strokeWidth="3"
         />
       </svg>
-      <strong>CORE</strong>
-      <small>LICRA VOICE</small>
+      <strong>Licra</strong>
     </div>
   );
 }
