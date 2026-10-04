@@ -826,6 +826,30 @@ try {
   await page
     .getByRole("button", { name: "Arrêter le partage", exact: true })
     .click();
+  await page.waitForFunction(
+    () => !window.ui.screen.useScreens.getState().busy,
+  );
+  await page.evaluate(async () => {
+    const original = navigator.mediaDevices.getDisplayMedia;
+    navigator.mediaDevices.getDisplayMedia = () => {
+      throw new DOMException("Picker cancelled", "NotAllowedError");
+    };
+    try {
+      await window.ui.screen.startScreen(
+        { quality: "auto", fps: 30, content: "auto" },
+        window.location.origin,
+      );
+    } finally {
+      navigator.mediaDevices.getDisplayMedia = original;
+    }
+  });
+  assert.equal(
+    await page.evaluate(() => window.ui.screen.useScreens.getState().busy),
+    false,
+  );
+  await page.waitForFunction(() =>
+    window.ui.screen.useScreens.getState().tracks.some((t) => !t.local),
+  );
   await guest
     .getByRole("button", { name: "Arrêter le partage", exact: true })
     .click();

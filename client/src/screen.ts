@@ -40,6 +40,8 @@ let room: Room | undefined,
   roomChannel = "",
   epoch = 0,
   joining: Promise<void> | undefined,
+  stopping: Promise<void> | undefined,
+  starting = false,
   captured: MediaStream | undefined,
   retry: ReturnType<typeof setTimeout> | undefined;
 function fail(e: unknown) {
@@ -160,7 +162,7 @@ export async function syncScreens(url: string) {
   }
   if (room && roomChannel !== ch) await closeScreens();
   const state = useScreens.getState();
-  if (state.busy && !room) return;
+  if (state.busy) return;
   if (
     !state.sharing &&
     !state.shares.some((share) => share.channel_id === ch)
@@ -226,7 +228,13 @@ export async function selectScreenCodec(
   throw new Error("Aucun codec vidéo H.264/VP8 compatible disponible");
 }
 export async function startScreen(options: ScreenOptions, url: string) {
-  if (useScreens.getState().busy || useScreens.getState().sharing) return;
+  if (
+    starting ||
+    stopping ||
+    useScreens.getState().busy ||
+    useScreens.getState().sharing
+  )
+    return;
   const s = useStore.getState(),
     self = s.users.find((u) => u.id === s.self_id),
     ch = self?.channel_id ?? "",
@@ -244,24 +252,25 @@ export async function startScreen(options: ScreenOptions, url: string) {
       limits.max_height,
     ),
     fps = Math.min(options.fps, limits.max_fps);
+  starting = true;
   useScreens.setState({ busy: true, error: "" });
   // Invoke the native picker in the click handler, before any awaited network request.
   const captureEpoch = epoch;
-  const capture = navigator.mediaDevices.getDisplayMedia({
-    audio: false,
-    video: {
-      height:
-        options.quality === "source"
-          ? { max: height }
-          : { ideal: height, max: height },
-      width: { max: height * 2 },
-      frameRate: { ideal: fps, max: fps },
-    },
-  });
   let stream: MediaStream | undefined;
+  let requested = false;
   const channelAtClick = ch;
   try {
-    stream = await capture;
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      audio: false,
+      video: {
+        height:
+          options.quality === "source"
+            ? { max: height }
+            : { ideal: height, max: height },
+        width: { max: height * 2 },
+        frameRate: { ideal: fps, max: fps },
+      },
+    });
     if (captureEpoch !== epoch) throw new Error("Partage annulé");
     const current = useStore.getState();
     if (
@@ -274,6 +283,7 @@ export async function startScreen(options: ScreenOptions, url: string) {
     if (room && roomChannel !== channelAtClick) await closeScreens();
     const g = epoch;
     captured = stream;
+    requested = true;
     const grant = await request("SCREEN_START", options);
     if (g !== epoch) throw new Error("Partage annulé");
     if (!room) await connectRoom(grant, url);
@@ -343,28 +353,42 @@ export async function startScreen(options: ScreenOptions, url: string) {
     });
   } catch (e) {
     stream?.getTracks().forEach((t) => t.stop());
-    await closeScreens();
-    if (useStore.getState().status === "connected")
-      await request("SCREEN_STOP").catch(() => {});
+    if (requested) {
+      await closeScreens();
+      if (useStore.getState().status === "connected")
+        await request("SCREEN_STOP").catch(() => {});
+    }
     if (!(e instanceof DOMException && e.name === "NotAllowedError")) fail(e);
   } finally {
-    useScreens.setState({ busy: false });
+    starting = false;
+    useScreens.setState({ busy: !!stopping });
+    void syncScreens(url).catch(fail);
   }
 }
 export async function stopScreen(notify = true) {
-  useScreens.setState({ sharing: false });
-  const current = room;
-  captured?.getTracks().forEach((t) => t.stop());
-  captured = undefined;
-  if (current) {
-    for (const pub of current.localParticipant.videoTrackPublications.values()) {
-      if (pub.track)
-        await current.localParticipant.unpublishTrack(pub.track, true);
-      remove(pub.trackSid);
+  if (stopping) return stopping;
+  useScreens.setState({ sharing: false, busy: true });
+  const work = (async () => {
+    const current = room;
+    captured?.getTracks().forEach((t) => t.stop());
+    captured = undefined;
+    if (current) {
+      for (const pub of current.localParticipant.videoTrackPublications.values()) {
+        if (pub.track)
+          await current.localParticipant.unpublishTrack(pub.track, true);
+        remove(pub.trackSid);
+      }
     }
+    if (notify && useStore.getState().status === "connected")
+      await request("SCREEN_STOP");
+  })();
+  stopping = work;
+  try {
+    await work;
+  } finally {
+    stopping = undefined;
+    useScreens.setState({ busy: starting });
   }
-  if (notify && useStore.getState().status === "connected")
-    await request("SCREEN_STOP");
 }
 export async function screenDiagnostics() {
   const current = room;

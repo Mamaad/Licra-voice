@@ -84,30 +84,31 @@ RTP vidéo ; ils n’incluent pas tout le trafic NIC/UDP/TCP/RTCP ni le trafic v
 
 | Profil | Résolution/FPS élevés observés | CPU SFU | RAM SFU | Upload publisher Mbit/s | Download par viewer Mbit/s | Sortie vidéo estimée SFU Mbit/s | Temps d’encodage publisher / durée |
 |---|---|---:|---:|---:|---:|---:|---:|
-| 1080p / 30 demandés | 1920×1080 / 20 | 9.9 % | 134 Mio | 1.29 | 0.15–0.70 | 1.01 | 79.1 % |
-| 1080p / 60 demandés | 640×360 / 15 | 9.2 % | 144 Mio | 0.74 | 0.20–0.21 | 0.61 | 4.9 % |
-| 1440p / 30 demandés | 2560×1440 / 21 | 11.3 % | 149 Mio | 2.11 | 0.16–0.93 | 1.25 | 72.1 % |
-| 1440p / 60 demandés | 2560×1440 / 21 | 11.9 % | 151 Mio | 2.76 | 0.21–1.48 | 1.91 | 89.5 % |
-| source / 30 demandés | 96×96 / 19 | 7.7 % | 155 Mio | 0.04 | 0.04–0.04 | 0.11 | 0.0 % |
+| 1080p / 30 demandés | 1920×1080 / 21 | 9.9 % | 139 Mio | 1.79 | 0.15–0.65 | 0.95 | 69.6 % |
+| 1080p / 60 demandés | 1920×1080 / 20 | 10.9 % | 143 Mio | 2.48 | 0.21–1.01 | 1.43 | 67.8 % |
+| 1440p / 30 demandés | 2560×1440 / 21 | 10.4 % | 150 Mio | 1.64 | 0.15–0.95 | 1.25 | 86.0 % |
+| 1440p / 60 demandés | 2560×1440 / 17 | 11.1 % | 155 Mio | 2.53 | 0.20–1.35 | 1.76 | 129.4 % |
+| source / 30 demandés | 16×16 / 20 | 7.7 % | 156 Mio | 0.06 | 0.02–0.02 | 0.06 | 1.3 % |
 
 Le temps d’encodage provient de `totalEncodeTime` ; ce n’est pas une mesure de
 tout le processus publisher. Chromium complet, publisher et trois viewers
-inclus, consomme environ 282–538 %
+inclus, consomme environ 276–570 %
 d’un cœur avec le rendu logiciel. Le GPU n’est pas observable dans cet essai.
 
-Deux publishers + deux viewers : CPU SFU 9.4 %,
-RAM 124 Mio, uploads respectifs
-0.16/0.37 Mbit/s,
-downloads 0.30/0.31 Mbit/s.
+Deux publishers + deux viewers : CPU SFU 8.4 %,
+RAM 130 Mio, uploads respectifs
+0.13/0.17 Mbit/s,
+downloads 0.25/0.25 Mbit/s.
 Les deux viewers reçoivent effectivement des images des deux publications.
 La charge SFU reste faible dans ces scénarios ; aucune conclusion de capacité
 Internet ou de maximum d’utilisateurs ne découle de quatre clients locaux.
 
 Données complètes : [screen-local.json](benchmarks/screen-local.json).
 
-Le profil 1080p60 a été réduit à une couche inférieure pendant cette mesure
-(`qualityLimitationReason=bandwidth`) : les dimensions de la table sont celles
-effectivement encodées, distinctes du profil demandé.
+Les dimensions indiquées sont effectivement encodées. Lors de séries précédentes,
+1080p60 a été réduit par WebRTC à une couche inférieure
+(`qualityLimitationReason=bandwidth`) : le profil demandé ne garantit pas
+la résolution effectivement transmise.
 
 **60 FPS n’est pas validé physiquement** : la source synthétique plafonne
 vers 20 FPS pour 1080p/1440p malgré les contraintes 30/60. Source est une
@@ -128,6 +129,8 @@ source de test native 96×96, et ne valide pas un moniteur Windows 4K.
   transport coupé puis reconnexion automatique, modération et changement de salon.
 - `npm run test:media` : Opus réellement reçu, rooms isolées, déplacement admin,
   ancien token refusé, périphériques/seuil micro/aperçu/parole après options.
+- Répétition de la migration sur une sauvegarde privée de la base de production :
+  intégrité SQLite et identités, rôles, salons, bans et overrides conservés.
 - Client TypeScript/Vite et tests des adresses ; tests Rust d’identité et backup ;
   compilation croisée Windows GNU. La CI existante construit également Windows
   MSVC et le setup NSIS signé, vérifie la signature et l’installation/mise à jour
@@ -137,7 +140,9 @@ source de test native 96×96, et ne valide pas un moniteur Windows 4K.
 
 Corrections spécifiques : bitrate simulcast arrondi en entier (le protocole
 LiveKit refuse les décimales) ; callbacks d’une ancienne room ignorés ; reprise
-après annulation d’un join pendant une modification de droits ; fermeture des
+après annulation d’un join pendant une modification de droits ; arrêt dédupliqué
+et démarrage protégé pendant le nettoyage du partage précédent ; annulation du
+sélecteur sans interrompre les partages regardés ni bloquer le bouton ; fermeture des
 deux côtés du proxy pour éviter le blocage du contrôle lors d’une coupure ;
 retries conservés pour une ancienne session de la même identité ; lecture des
 MP après retrait du droit d’envoi ; quota recalculé après cascade de suppression
