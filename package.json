@@ -1,0 +1,10 @@
+{
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  },
+  "name": "licra",
+  "private": true,
+  "scripts": {
+    "test:media": "node tools/media-check/run.mjs"
+  }
+}

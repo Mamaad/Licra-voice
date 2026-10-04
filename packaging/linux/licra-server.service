@@ -1,0 +1,16 @@
+[Unit]
+Description=Licra control server
+Requires=licra-livekit.service
+After=licra-livekit.service
+
+[Service]
+ExecStart=%h/.local/bin/licra-server --config %h/.config/licra/config.toml
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+LimitNOFILE=65536
+
+[Install]
+WantedBy=default.target

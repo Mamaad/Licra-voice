@@ -1,0 +1,164 @@
+<!doctype html>
+<html>
+  <body>
+    <h1>Licra media integration harness</h1>
+    <script type="module">
+      import { Room, RoomEvent, Track } from "livekit-client";
+      window.harness = {
+        events: [],
+        room: null,
+        snapshot: null,
+        error: "",
+        queue: Promise.resolve(),
+        requests: new Map(),
+      };
+      const h = window.harness;
+      function send(type, payload = {}) {
+        const request_id = crypto.randomUUID();
+        h.socket.send(
+          JSON.stringify({
+            type,
+            request_id,
+            payload,
+            timestamp: new Date().toISOString(),
+          }),
+        );
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            h.requests.delete(request_id);
+            reject(new Error("request timeout " + type));
+          }, 10000);
+          h.requests.set(request_id, { resolve, reject, timeout });
+        });
+      }
+      h.send = send;
+      h.connect = async (address, nickname) => {
+        h.address = address;
+        const keys = await crypto.subtle.generateKey(
+          { name: "Ed25519" },
+          true,
+          ["sign", "verify"],
+        );
+        const pub = new Uint8Array(
+          await crypto.subtle.exportKey("raw", keys.publicKey),
+        );
+        const public_key = btoa(String.fromCharCode(...pub));
+        h.socket = new WebSocket(address + "/ws");
+        return new Promise((resolve, reject) => {
+          h.socket.onopen = () => {
+            void send("CLIENT_HELLO", {
+              protocol_version: 1,
+              client_version: "0.1.0",
+              nickname,
+              device_public_key: public_key,
+            }).catch(() => {});
+          };
+          h.socket.onmessage = async (e) => {
+            const m = JSON.parse(e.data),
+              p = m.payload;
+            h.events.push(m);
+            if (m.type === "SERVER_HELLO") {
+              const signature = new Uint8Array(
+                await crypto.subtle.sign(
+                  "Ed25519",
+                  keys.privateKey,
+                  new TextEncoder().encode(p.challenge_context),
+                ),
+              );
+              void send("AUTHENTICATE", {
+                signature: btoa(String.fromCharCode(...signature)),
+              }).catch(() => {});
+            }
+            if (m.type === "SNAPSHOT") {
+              h.snapshot = p;
+              resolve(p);
+            }
+            if (m.type === "PING") {
+              void send("PONG").catch(() => {});
+            }
+            if (m.type === "ACK" || m.type === "ERROR") {
+              const task = h.requests.get(m.request_id);
+              if (task) {
+                clearTimeout(task.timeout);
+                h.requests.delete(m.request_id);
+                if (m.type === "ERROR") task.reject(new Error(p.code));
+                else task.resolve(p);
+              }
+            }
+            if (m.type === "ERROR") {
+              h.error = p.code;
+              if (!h.snapshot) reject(new Error(p.code));
+            }
+            if (m.type === "VOICE_JOIN") {
+              h.lastToken = p.token;
+              h.lastChannel = p.channel_id;
+              h.queue = h.queue
+                .then(async () => {
+                  await h.room?.disconnect();
+                  const room = new Room({
+                    webAudioMix: true,
+                    publishDefaults: {
+                      dtx: true,
+                      red: true,
+                      forceStereo: false,
+                      audioPreset: { maxBitrate: 32000 },
+                    },
+                  });
+                  h.room = room;
+                  room.on(RoomEvent.TrackSubscribed, (track) => {
+                    if (track.kind === Track.Kind.Audio) {
+                      const e = track.attach();
+                      document.body.append(e);
+                    }
+                  });
+                  await room.connect(address + "/livekit", p.token);
+                  await room.startAudio();
+                  await room.localParticipant.setMicrophoneEnabled(
+                    p.can_speak,
+                    {
+                      channelCount: 1,
+                      sampleRate: 48000,
+                      echoCancellation: true,
+                      noiseSuppression: true,
+                      autoGainControl: true,
+                    },
+                  );
+                  h.joined = p.channel_id;
+                })
+                .catch((e) => {
+                  h.error = e.message;
+                  throw e;
+                });
+            }
+          };
+          h.socket.onerror = () => reject(new Error("socket failed"));
+        });
+      };
+      h.stats = async () => {
+        let received = 0;
+        const codecs = [];
+        for (const participant of h.room?.remoteParticipants.values() ?? []) {
+          for (const publication of participant.audioTrackPublications.values()) {
+            const stats = await publication.track?.getRTCStatsReport();
+            if (!stats) continue;
+            for (const s of stats.values()) {
+              if (
+                s.type === "inbound-rtp" &&
+                (s.kind === "audio" || s.mediaType === "audio")
+              )
+                received += s.bytesReceived ?? 0;
+              if (s.type === "codec") codecs.push(s.mimeType.toLowerCase());
+            }
+          }
+        }
+        return {
+          received,
+          opus: codecs.includes("audio/opus"),
+          codecs,
+          remote: h.room?.remoteParticipants.size ?? 0,
+          errors: h.error,
+        };
+      };
+    </script>
+  </body>
+</html>

@@ -1,0 +1,15 @@
+[Unit]
+Description=Licra LiveKit SFU
+Before=licra-server.service
+
+[Service]
+ExecStart=%h/.local/bin/livekit-server --config %h/.config/licra/livekit.yaml
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+LimitNOFILE=65536
+
+[Install]
+WantedBy=default.target

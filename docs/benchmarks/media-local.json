@@ -1,0 +1,34 @@
+{
+  "result": "PASS",
+  "opus_received": true,
+  "isolated_rooms": true,
+  "admin_move": true,
+  "stale_token_status": 403,
+  "stats": [
+    {
+      "received": 1396,
+      "opus": true,
+      "codecs": [
+        "audio/opus"
+      ],
+      "remote": 1,
+      "errors": ""
+    },
+    {
+      "received": 1653,
+      "opus": true,
+      "codecs": [
+        "audio/opus"
+      ],
+      "remote": 1,
+      "errors": ""
+    },
+    {
+      "received": 0,
+      "opus": false,
+      "codecs": [],
+      "remote": 0,
+      "errors": ""
+    }
+  ]
+}

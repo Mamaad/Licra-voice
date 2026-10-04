@@ -1,0 +1,297 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Mamaad/Licra-voice/protocol/v1",
+  "protocol_version": 1,
+  "$ref": "#/$defs/Envelope",
+  "$defs": {
+    "Effect": {
+      "enum": [
+        "ALLOW",
+        "DENY",
+        "INHERIT"
+      ]
+    },
+    "FeatureCapability": {
+      "enum": [
+        "voice",
+        "screen_share",
+        "youtube_sync",
+        "server_files",
+        "remote_browser"
+      ]
+    },
+    "Channel": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "parent_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "sort_order": {
+          "type": "integer"
+        },
+        "max_users": {
+          "type": "integer"
+        },
+        "audio_profile": {
+          "enum": [
+            "eco",
+            "standard",
+            "high"
+          ]
+        },
+        "has_password": {
+          "type": "boolean"
+        },
+        "is_permanent": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "parent_id",
+        "name",
+        "description",
+        "sort_order",
+        "max_users",
+        "audio_profile",
+        "has_password",
+        "is_permanent",
+        "created_at",
+        "updated_at"
+      ],
+      "additionalProperties": false
+    },
+    "User": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "nickname": {
+          "type": "string"
+        },
+        "channel_id": {
+          "type": "string"
+        },
+        "muted": {
+          "type": "boolean"
+        },
+        "deafened": {
+          "type": "boolean"
+        },
+        "server_muted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "fingerprint",
+        "nickname",
+        "channel_id",
+        "muted",
+        "deafened",
+        "server_muted"
+      ],
+      "additionalProperties": false
+    },
+    "Role": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "protected": {
+          "type": "boolean"
+        },
+        "permissions": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Effect"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "protected",
+        "permissions"
+      ],
+      "additionalProperties": false
+    },
+    "Snapshot": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        "self_id": {
+          "type": "string"
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Channel"
+          }
+        },
+        "users": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/User"
+          }
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Role"
+          }
+        },
+        "permissions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "channel_permissions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "required": [
+        "server",
+        "self_id",
+        "channels",
+        "users",
+        "roles",
+        "permissions",
+        "channel_permissions"
+      ],
+      "additionalProperties": false
+    },
+    "Envelope": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string"
+        },
+        "payload": {}
+      },
+      "required": [
+        "type",
+        "timestamp",
+        "payload"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "events": [
+    "CLIENT_HELLO",
+    "SERVER_HELLO",
+    "AUTHENTICATE",
+    "SNAPSHOT",
+    "ACK",
+    "USER_CONNECTED",
+    "USER_DISCONNECTED",
+    "USER_UPDATED",
+    "USER_MOVED",
+    "CHANNEL_CREATED",
+    "CHANNEL_UPDATED",
+    "CHANNEL_DELETED",
+    "ROLE_UPDATED",
+    "PERMISSIONS_UPDATED",
+    "VOICE_STATE_UPDATED",
+    "VOICE_JOIN",
+    "VOICE_LEFT",
+    "VOICE_REJOIN_REQUIRED",
+    "SERVER_INFO_UPDATED",
+    "KICK",
+    "BAN",
+    "ERROR",
+    "PING",
+    "PONG"
+  ],
+  "permissions": [
+    "server.view",
+    "server.edit",
+    "server.shutdown",
+    "server.view_logs",
+    "channel.create",
+    "channel.edit",
+    "channel.delete",
+    "channel.join",
+    "channel.join_full",
+    "channel.join_password_bypass",
+    "channel.move_self",
+    "channel.move_others",
+    "voice.speak",
+    "voice.mute_others",
+    "voice.priority_speaker",
+    "user.kick",
+    "user.ban",
+    "user.change_others_nickname",
+    "role.view",
+    "role.create",
+    "role.edit",
+    "role.delete",
+    "role.assign",
+    "permissions.view",
+    "permissions.edit",
+    "future.screen_share",
+    "future.youtube_control",
+    "future.browser_start",
+    "future.browser_control",
+    "future.files_view",
+    "future.files_upload",
+    "future.files_delete"
+  ]
+}
