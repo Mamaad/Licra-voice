@@ -48,6 +48,11 @@ jobs:
       - run: python scripts/check-versions.py
       - run: npm ci && npm test && npm run tauri -- build --bundles nsis
         working-directory: client
+      - name: Verify signature and installer data retention
+        run: |
+          $setup = (Get-ChildItem client/src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          cargo run --manifest-path client/src-tauri/Cargo.toml --no-default-features --example verify_updater -- packaging/updater.pub "${setup}.sig" "$setup"
+          ./packaging/windows/smoke-install.ps1
       - run: python scripts/generate-latest.py --version (Get-Content CLIENT_VERSION).Trim() --bundle client/src-tauri/target/release/bundle/nsis --notes RELEASE_NOTES.md --output latest.json
       - run: |
           New-Item -ItemType Directory -Force dist/windows-assets
