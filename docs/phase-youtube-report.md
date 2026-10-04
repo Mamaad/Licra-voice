@@ -119,6 +119,30 @@ l’erreur 150 et restent sans lecture. Donc aucune dérive réelle de décodage
 YouTube ni validation Windows physique n’est revendiquée.
 Résultat : [youtube-real-api.json](benchmarks/youtube-real-api.json).
 
+## Validation officielle GitHub
+
+Code : `940b70dc631abd1e5446a9c6b2088b35f9561f40`.
+[Validate 37236356585](https://github.com/Mamaad/Licra-voice/actions/runs/37236356585) :
+Linux et Windows réussis : Go race/vet/build, suites média/UI complètes,
+TypeScript/Node, Rust identité et build natif MSVC.
+
+[Signed releases 37236860441](https://github.com/Mamaad/Licra-voice/actions/runs/37236860441) :
+binaire Linux officiel 0.3.0 et archive vérifiés par SHA-256. Migration du
+binaire officiel répétée sur une copie privée de production : SQLite sain,
+identités/ID serveur/rôles/salons/bans/overrides et toutes les anciennes
+permissions de rôle conservés, sept permissions YouTube ajoutées.
+Linux, Windows et publication réussis. Setup NSIS MSVC signé produit ; tests
+Windows : installation par défaut, second disque avec espaces, chemin de mise
+à jour et conservation d’AppData tous réussis.
+
+Release : [Licra v0.3.0](https://github.com/Mamaad/Licra-voice/releases/tag/v0.3.0).
+Client : [Licra_0.3.0_x64-setup.exe](https://github.com/Mamaad/Licra-voice/releases/download/v0.3.0/Licra_0.3.0_x64-setup.exe),
+5 418 572 octets. Vérification indépendante du setup téléchargé publiquement :
+signature valide et fichier altéré rejeté. `latest.json` public annonce bien
+0.3.0, pointe sur ce setup et contient sa signature correspondante. Checksum
+serveur public identique au binaire officiel installé.
+L’updater actuel utilise « Mettre à jour Licra » ; aucune identité à recréer.
+
 ## Limitations et livraison
 
 Le lecteur respecte restrictions d’embed, pays, compte, annonces et autoplay.
@@ -131,9 +155,14 @@ La fenêtre de position/durée acceptée côté contrôle est de 24 heures maxim
 Windows/WebView2 réels : lecture, Referer, buffers et synchro à plusieurs postes
 restent à confirmer. Le build MSVC/setup signé est produit par la CI existante,
 avec vérification de signature et installation sur un second disque/AppData.
-Les nouvelles fonctions YouTube nécessitent le serveur 0.3.0. La migration et
-le redémarrage de production requièrent une autorisation distincte ; la version
-0.2.2 reste en service pendant la préparation. Aucun nouveau port.
+Serveur 0.3.0 installé le 4 octobre 2026 à 21:40 UTC avec autorisation explicite.
+Santé HTTP : `status=ok`, `server_version=0.3.0`, zéro client au redémarrage.
+Services contrôle et LiveKit actifs ; LiveKit n’a pas été redémarré. Contrôle
+média réussi, SQLite sain, données et anciennes permissions comparées à la
+sauvegarde et conservées. Sauvegarde privée :
+`/home/mamad/.local/state/licra/backup-20261004T214040Z`.
+Aucun nouveau port ; défaut de partage effectivement passé de 8 à 16 Mbit/s
+sur ce serveur, dont la configuration ne surcharge pas ce plafond.
 
 Architecture/configuration/sources : [youtube.md](youtube.md).
 
