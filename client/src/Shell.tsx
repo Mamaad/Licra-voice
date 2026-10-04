@@ -10,6 +10,9 @@ import {
   voiceDiagnostics,
 } from "./voice";
 import { report, request } from "./control";
+import { PrivateInbox } from "./Chat";
+import { useChat, openPrivate } from "./chat";
+import { useScreens } from "./screen";
 import { Modal } from "./Modal";
 import {
   Icon,
@@ -145,6 +148,7 @@ export function ServerSidebar({
           </p>
         )}
       </div>
+      <PrivateInbox />
       <button className="sidebar-add" onClick={onAdd}>
         <Icon name="plus" />
         Ajouter un serveur
@@ -168,8 +172,13 @@ export function UserRow({
   const s = useStore(),
     talking = s.talking.includes(user.id),
     scope = s.channel_permissions[user.channel_id] ?? s.permissions;
+  const screen = useScreens();
   return (
     <button
+      onDoubleClick={() => {
+        if (user.id !== s.self_id && s.permissions["chat.private.send"])
+          openPrivate(user.fingerprint, user.nickname);
+      }}
       className={`user-row ${compact ? "compact" : ""} ${selected ? "selected" : ""} ${talking ? "talking" : ""}`}
       draggable={user.id === s.self_id || !!scope["channel.move_others"]}
       onDragStart={(e) => {
@@ -187,6 +196,11 @@ export function UserRow({
         {user.nickname}
         {user.id === s.self_id && <small>vous</small>}
       </span>
+      {screen.shares.some((t) => t.user_id === user.id) && (
+        <span title="Partage d’écran actif" aria-label="Partage d’écran actif">
+          <Icon name="screen"/>
+        </span>
+      )}
       <VoiceActivityIndicator active={talking} />
       <AudioStatusIcon user={user} />
       <span
@@ -280,6 +294,7 @@ export function ChannelTree({
     position: DropPosition,
   ) => void;
 }) {
+  const chat = useChat();
   const s = useStore(),
     [closed, setClosed] = useState<Record<string, boolean>>({}),
     [target, setTarget] = useState<{
@@ -395,6 +410,11 @@ export function ChannelTree({
                   {c.max_users ? `/${c.max_users}` : ""}
                 </span>
                 {c.has_password && <Icon name="lock" />}
+                {!!chat.threads.find((t) => t.channel_id === c.id)?.unread && (
+                  <span className="unread-badge">
+                    {chat.threads.find((t) => t.channel_id === c.id)?.unread}
+                  </span>
+                )}
               </button>
               {permission["channel.create"] && (
                 <IconButton

@@ -1,15 +1,32 @@
 package control
 
 import (
+	"bufio"
 	"context"
 	"licra/server/internal/media"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strconv"
 	"strings"
 )
+
+// Close the client half too: ReverseProxy may wait for both directions after a backend EOF.
+type mediaResponseWriter struct {
+	http.ResponseWriter
+	ctx context.Context
+}
+
+func (w mediaResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+func (w mediaResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	conn, rw, e := http.NewResponseController(w.ResponseWriter).Hijack()
+	if e == nil {
+		context.AfterFunc(w.ctx, func() { _ = conn.Close() })
+	}
+	return conn, rw, e
+}
 
 func (s *Server) media() media.Service {
 	return media.Service{URL: "http://127.0.0.1:" + strconv.Itoa(s.Config.LiveKit.InternalPort), Key: s.Config.LiveKit.APIKey, Secret: s.Config.LiveKit.APISecret}
@@ -51,18 +68,43 @@ func (s *Server) signaling(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	p := s.clients[claims.Subject]
-	valid := p != nil && !p.revoked && p.voiceContext != nil && p.user.ChannelID != "" && claims.Video["room"] == "channel_"+p.user.ChannelID && s.allowed(p.user.Fingerprint, "channel.join", p.user.ChannelID)
-	if valid && claims.Video["canPublish"] == true {
-		valid = !p.user.ServerMuted && s.allowed(p.user.Fingerprint, "voice.speak", p.user.ChannelID)
-	}
+	valid := p != nil && !p.revoked && p.user.ChannelID != "" && s.allowed(p.user.Fingerprint, "channel.join", p.user.ChannelID)
+	screen := claims.Video["room"] == "screen_"+func() string {
+		if p != nil {
+			return p.user.ChannelID
+		}
+		return ""
+	}()
 	var voiceContext context.Context
-	if valid {
-		voiceContext = p.voiceContext
-		p.voiceProxies.Add(1)
+	if valid && screen {
+		valid = s.Config.Screen.Enabled && p.screenContext != nil
+		if claims.Video["canPublish"] == true {
+			valid = valid && p.screenActive && s.allowed(p.user.Fingerprint, "screen.share", p.user.ChannelID)
+		}
+		if claims.Video["canSubscribe"] == true {
+			valid = valid && s.allowed(p.user.Fingerprint, "screen.watch", p.user.ChannelID)
+		}
+		if valid {
+			voiceContext = p.screenContext
+			p.screenProxies.Add(1)
+		}
+	} else if valid {
+		valid = p.voiceContext != nil && claims.Video["room"] == "channel_"+p.user.ChannelID
+		if claims.Video["canPublish"] == true {
+			valid = valid && !p.user.ServerMuted && s.allowed(p.user.Fingerprint, "voice.speak", p.user.ChannelID)
+		}
+		if valid {
+			voiceContext = p.voiceContext
+			p.voiceProxies.Add(1)
+		}
 	}
 	s.mu.Unlock()
 	if valid {
-		defer p.voiceProxies.Done()
+		if screen {
+			defer p.screenProxies.Done()
+		} else {
+			defer p.voiceProxies.Done()
+		}
 		ctx, cancel := context.WithCancel(r.Context())
 		stop := context.AfterFunc(voiceContext, cancel)
 		defer stop()
@@ -90,18 +132,26 @@ func (s *Server) signaling(w http.ResponseWriter, r *http.Request) {
 		return nil
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, e error) { http.Error(w, "media unavailable", 502) }
-	proxy.ServeHTTP(w, r)
+	proxy.ServeHTTP(mediaResponseWriter{w, r.Context()}, r)
 }
 func (s *Server) disconnectVoice(ctx context.Context, p *client) error {
+	if e := s.disconnectScreen(ctx, p); e != nil {
+		return e
+	}
 	if p.user.ChannelID == "" {
 		return nil
 	}
-	if p.voiceCancel != nil {
-		p.voiceCancel()
-		p.voiceCancel = nil
+	cancel := p.voiceCancel
+	p.voiceCancel = nil
+	p.voiceContext = nil
+	// Let LiveKit send its definitive leave before closing the signaling proxy.
+	// Closing the proxy first can race participant reconnect/negotiation teardown.
+	err := s.media().Remove(ctx, p.user.ChannelID, p.user.ID)
+	if cancel != nil {
+		cancel()
 	}
 	p.voiceProxies.Wait()
-	return s.media().Remove(ctx, p.user.ChannelID, p.user.ID)
+	return err
 }
 func (s *Server) reconcileVoice() {
 	for _, p := range s.clients {

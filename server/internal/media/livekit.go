@@ -94,3 +94,16 @@ func (s Service) Remove(ctx context.Context, ch, id string) error {
 func (s Service) Permission(ctx context.Context, ch, id string, speak bool) error {
 	return s.Call(ctx, "UpdateParticipant", "channel_"+ch, map[string]any{"room": "channel_" + ch, "identity": id, "permission": map[string]any{"can_publish": speak, "can_subscribe": true, "can_publish_data": false, "can_publish_sources": []int{2}}}, nil)
 }
+
+func (s Service) ScreenToken(identity, name, channel string, publish, watch bool) (string, error) {
+	return s.token(identity, name, map[string]any{"roomJoin": true, "room": "screen_" + channel, "canPublish": publish, "canSubscribe": watch, "canPublishData": false, "canPublishSources": []string{"screen_share"}})
+}
+func (s Service) EnsureRoom(ctx context.Context, room string) error {
+	return s.Call(ctx, "CreateRoom", room, map[string]any{"name": room, "empty_timeout": 60, "departure_timeout": 20, "enabled_codecs": []map[string]string{{"mime": "video/H264"}, {"mime": "video/VP8"}}}, nil)
+}
+func (s Service) RemoveRoomParticipant(ctx context.Context, room, id string) error {
+	return s.Call(ctx, "RemoveParticipant", room, map[string]string{"room": room, "identity": id}, nil)
+}
+func (s Service) ScreenPermission(ctx context.Context, ch, id string, publish, watch bool) error {
+	return s.Call(ctx, "UpdateParticipant", "screen_"+ch, map[string]any{"room": "screen_" + ch, "identity": id, "permission": map[string]any{"can_publish": publish, "can_subscribe": watch, "can_publish_data": false, "can_publish_sources": []int{3}}}, nil)
+}

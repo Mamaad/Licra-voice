@@ -15,7 +15,7 @@ func TestMigrations(t *testing.T) {
 		}
 		var n int
 		d.QueryRow("select count(*) from schema_migrations").Scan(&n)
-		if n != 1 {
+		if n != 2 {
 			t.Fatal(n)
 		}
 		d.Close()
@@ -38,7 +38,7 @@ func TestConcurrentFirstOpen(t *testing.T) {
 			}
 			defer d.Close()
 			var n int
-			if e = d.QueryRow("SELECT count(*) FROM schema_migrations").Scan(&n); e != nil || n != 1 {
+			if e = d.QueryRow("SELECT count(*) FROM schema_migrations").Scan(&n); e != nil || n != 2 {
 				t.Errorf("migrations=%d, error=%v", n, e)
 			}
 		}()

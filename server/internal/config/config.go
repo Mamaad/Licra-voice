@@ -13,47 +13,70 @@ import (
 	"strings"
 )
 
+type ChatConfig struct {
+	MaxStoredMessages   int  `toml:"max_stored_messages" json:"max_stored_messages"`
+	MaxThreads          int  `toml:"max_threads" json:"max_threads"`
+	Enabled             bool `toml:"enabled" json:"enabled"`
+	HistoryEnabled      bool `toml:"history_enabled" json:"history_enabled"`
+	MaxMessageLength    int  `toml:"max_message_length" json:"max_message_length"`
+	MessagesPerSecond   int  `toml:"messages_per_second" json:"messages_per_second"`
+	MessagesPerMinute   int  `toml:"messages_per_minute" json:"messages_per_minute"`
+	EditsPerMinute      int  `toml:"edits_per_minute" json:"edits_per_minute"`
+	TypingPerSecond     int  `toml:"typing_per_second" json:"typing_per_second"`
+	ChannelHistoryLimit int  `toml:"channel_history_limit" json:"channel_history_limit"`
+	PrivateHistoryLimit int  `toml:"private_history_limit" json:"private_history_limit"`
+	RetentionDays       int  `toml:"retention_days" json:"retention_days"`
+}
+type ScreenConfig struct {
+	Enabled             bool `toml:"enabled" json:"enabled"`
+	MaxSharesPerChannel int  `toml:"max_shares_per_channel" json:"max_shares_per_channel"`
+	MaxBitrate          int  `toml:"max_bitrate" json:"max_bitrate"`
+	MaxHeight           int  `toml:"max_height" json:"max_height"`
+	MaxFPS              int  `toml:"max_fps" json:"max_fps"`
+}
 type Config struct {
+	Chat   ChatConfig   `toml:"chat" json:"chat"`
+	Screen ScreenConfig `toml:"screen_share" json:"screen_share"`
 	Server struct {
-		Name                 string `toml:"name"`
-		Bind                 string `toml:"bind"`
-		BasePort             int    `toml:"base_port"`
-		MaxClients           int    `toml:"max_clients"`
-		MinimumClientVersion string `toml:"minimum_client_version"`
-		TLSCert              string `toml:"tls_cert"`
-		TLSKey               string `toml:"tls_key"`
-	} `toml:"server"`
+		Name                 string `toml:"name" json:"name"`
+		Bind                 string `toml:"bind" json:"bind"`
+		BasePort             int    `toml:"base_port" json:"base_port"`
+		MaxClients           int    `toml:"max_clients" json:"max_clients"`
+		MinimumClientVersion string `toml:"minimum_client_version" json:"minimum_client_version"`
+		TLSCert              string `toml:"tls_cert" json:"tls_cert"`
+		TLSKey               string `toml:"tls_key" json:"tls_key"`
+	} `toml:"server" json:"server"`
 	Database struct {
-		Path string `toml:"path"`
-	} `toml:"database"`
+		Path string `toml:"path" json:"path"`
+	} `toml:"database" json:"database"`
 	Voice struct {
-		DefaultProfile string `toml:"default_profile"`
-	} `toml:"voice"`
+		DefaultProfile string `toml:"default_profile" json:"default_profile"`
+	} `toml:"voice" json:"voice"`
 	LiveKit struct {
-		Binary       string `toml:"binary"`
-		InternalPort int    `toml:"internal_port"`
-		MediaUDPPort int    `toml:"media_udp_port"`
-		MediaTCPPort int    `toml:"media_tcp_port"`
-		APIKey       string `toml:"api_key"`
-		APISecret    string `toml:"api_secret"`
-		PublicIP     string `toml:"public_ip"`
-	} `toml:"livekit"`
+		Binary       string `toml:"binary" json:"binary"`
+		InternalPort int    `toml:"internal_port" json:"internal_port"`
+		MediaUDPPort int    `toml:"media_udp_port" json:"media_udp_port"`
+		MediaTCPPort int    `toml:"media_tcp_port" json:"media_tcp_port"`
+		APIKey       string `toml:"api_key" json:"api_key"`
+		APISecret    string `toml:"api_secret" json:"api_secret"`
+		PublicIP     string `toml:"public_ip" json:"public_ip"`
+	} `toml:"livekit" json:"livekit"`
 	Security struct {
-		AllowPlainIPConnection bool `toml:"allow_plain_ip_connection"`
-		HandshakeRateLimit     int  `toml:"handshake_rate_limit"`
-		MaxChannels            int  `toml:"max_channels"`
-	} `toml:"security"`
+		AllowPlainIPConnection bool `toml:"allow_plain_ip_connection" json:"allow_plain_ip_connection"`
+		HandshakeRateLimit     int  `toml:"handshake_rate_limit" json:"handshake_rate_limit"`
+		MaxChannels            int  `toml:"max_channels" json:"max_channels"`
+	} `toml:"security" json:"security"`
 	Turn struct {
-		Enabled  bool   `toml:"enabled"`
-		Domain   string `toml:"domain"`
-		UDPPort  int    `toml:"udp_port"`
-		TLSPort  int    `toml:"tls_port"`
-		CertFile string `toml:"cert_file"`
-		KeyFile  string `toml:"key_file"`
-	} `toml:"turn"`
+		Enabled  bool   `toml:"enabled" json:"enabled"`
+		Domain   string `toml:"domain" json:"domain"`
+		UDPPort  int    `toml:"udp_port" json:"udp_port"`
+		TLSPort  int    `toml:"tls_port" json:"tls_port"`
+		CertFile string `toml:"cert_file" json:"cert_file"`
+		KeyFile  string `toml:"key_file" json:"key_file"`
+	} `toml:"turn" json:"turn"`
 	Logging struct {
-		Level string `toml:"level"`
-	} `toml:"logging"`
+		Level string `toml:"level" json:"level"`
+	} `toml:"logging" json:"logging"`
 }
 
 func Expand(p string) string {
@@ -85,6 +108,8 @@ func Defaults() Config {
 	c.Security.HandshakeRateLimit = 10
 	c.Security.MaxChannels = 1000
 	c.Logging.Level = "info"
+	c.Chat = ChatConfig{MaxStoredMessages: 100000, MaxThreads: 10000, Enabled: true, HistoryEnabled: true, MaxMessageLength: 4000, MessagesPerSecond: 3, MessagesPerMinute: 60, EditsPerMinute: 30, TypingPerSecond: 2, ChannelHistoryLimit: 10000, PrivateHistoryLimit: 5000, RetentionDays: 90}
+	c.Screen = ScreenConfig{Enabled: true, MaxSharesPerChannel: 4, MaxBitrate: 8000000, MaxHeight: 2160, MaxFPS: 60}
 	c.Turn.UDPPort = 3478
 	c.Turn.TLSPort = 5349
 	return c
@@ -106,6 +131,12 @@ func Load(path string) (Config, error) {
 	}
 	if err = toml.Unmarshal(data, &c); err != nil {
 		return c, err
+	}
+	if c.Chat.MaxStoredMessages < 100 || c.Chat.MaxStoredMessages > 10000000 || c.Chat.MaxThreads < 1 || c.Chat.MaxThreads > 100000 || c.Chat.MaxMessageLength < 1 || c.Chat.MaxMessageLength > 8000 || c.Chat.MessagesPerSecond < 1 || c.Chat.MessagesPerSecond > 20 || c.Chat.MessagesPerMinute < 1 || c.Chat.MessagesPerMinute > 1000 || c.Chat.EditsPerMinute < 1 || c.Chat.EditsPerMinute > 1000 || c.Chat.TypingPerSecond < 1 || c.Chat.TypingPerSecond > 10 || c.Chat.ChannelHistoryLimit < 1 || c.Chat.ChannelHistoryLimit > 100000 || c.Chat.PrivateHistoryLimit < 1 || c.Chat.PrivateHistoryLimit > 100000 || c.Chat.RetentionDays < 1 || c.Chat.RetentionDays > 3650 {
+		return c, fmt.Errorf("invalid chat limits")
+	}
+	if c.Screen.MaxSharesPerChannel < 1 || c.Screen.MaxSharesPerChannel > 20 || c.Screen.MaxBitrate < 100000 || c.Screen.MaxBitrate > 50000000 || c.Screen.MaxHeight < 360 || c.Screen.MaxHeight > 4320 || c.Screen.MaxFPS < 30 || c.Screen.MaxFPS > 60 {
+		return c, fmt.Errorf("invalid screen limits")
 	}
 	c.Database.Path = Expand(c.Database.Path)
 	c.LiveKit.Binary = Expand(c.LiveKit.Binary)

@@ -1,6 +1,7 @@
 # Licra Voice
 
-Client vocal Windows et serveur auto-hébergé Ubuntu, sans compte central.
+Client vocal Windows et serveur auto-hébergé Ubuntu, sans compte central,
+avec chat persistant et partage d’écran.
 Tauri v2, React/TypeScript, Go, SQLite et LiveKit SFU. Licence MIT ; LiveKit
 est distribué séparément sous sa propre licence Apache 2.0.
 
@@ -65,9 +66,10 @@ signatures et demande un clic avant installation.
 - [Releases](docs/releasing.md), [sécurité](docs/security.md)
 - [Dépannage](docs/troubleshooting.md), [validation et limites](docs/validation.md)
 - [Performance](docs/performance.md)
+- [Chat et partage d’écran](docs/chat-screen.md), [rapport 0.2.0](docs/phase-chat-screen-report.md)
 
 La validation locale et la validation sur Windows sont consignées dans
 `docs/validation.md`. Ne pas déduire une capacité réseau de production d’un
-benchmark du control plane. La V1 n’implémente pas encore screen sharing,
-fichiers, YouTube ou navigateur distant ; les capacités annoncées sont
-limitées à `voice`.
+benchmark du control plane. La version 0.2.0 ajoute le chat persistant
+et le partage d’écran LiveKit. Fichiers, YouTube, navigateur collaboratif,
+webcam et tableau blanc restent différés.

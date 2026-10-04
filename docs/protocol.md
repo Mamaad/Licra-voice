@@ -69,3 +69,8 @@ Les messages audio ne transitent pas par ce protocole.
 Compatibilité : version de protocole identique et SemVer client supérieure
 ou égale au minimum annoncé, sans égalité obligatoire avec le serveur.
 Les prereleases nécessiteront une extension de cette compatibilité.
+
+## Chat et écran (0.2.0)
+
+Les commandes, événements et limites ajoutés au protocole v1 sont documentés
+dans [Chat et partage d’écran](chat-screen.md#protocole-v1-compatible).

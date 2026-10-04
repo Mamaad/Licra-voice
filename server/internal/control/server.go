@@ -32,18 +32,25 @@ type User struct {
 	ServerMuted bool   `json:"server_muted"`
 }
 type client struct {
-	user         User
-	conn         *websocket.Conn
-	out          chan protocol.Envelope
-	cancel       context.CancelFunc
-	ip           string
-	window       time.Time
-	requests     int
-	sensitive    time.Time
-	revoked      bool
-	voiceContext context.Context
-	voiceCancel  context.CancelFunc
-	voiceProxies sync.WaitGroup
+	user          User
+	conn          *websocket.Conn
+	out           chan protocol.Envelope
+	cancel        context.CancelFunc
+	ip            string
+	window        time.Time
+	requests      int
+	sensitive     time.Time
+	revoked       bool
+	screenActive  bool
+	screenOptions screenOptions
+	screenStarted time.Time
+	screenChannel string
+	screenContext context.Context
+	screenCancel  context.CancelFunc
+	screenProxies sync.WaitGroup
+	voiceContext  context.Context
+	voiceCancel   context.CancelFunc
+	voiceProxies  sync.WaitGroup
 }
 type bucket struct {
 	start time.Time
@@ -52,20 +59,24 @@ type bucket struct {
 
 // ponytail: control mutations are serialized; move media I/O outside this lock if measured control latency requires it.
 type Server struct {
-	Config  config.Config
-	DB      *sql.DB
-	ID      string
-	started time.Time
-	mu      sync.Mutex
-	clients map[string]*client
-	rates   map[string]bucket
-	policy  *permissions.Policy
-	pending int
-	closing bool
+	Config            config.Config
+	DB                *sql.DB
+	ID                string
+	started           time.Time
+	mu                sync.Mutex
+	clients           map[string]*client
+	chatRates         map[string]bucket
+	chatPruned        time.Time
+	chatStored        int64
+	rates             map[string]bucket
+	policy            *permissions.Policy
+	pending           int
+	closing           bool
+	maintenanceCancel context.CancelFunc
 }
 
 func New(c config.Config, db *sql.DB) (*Server, error) {
-	s := &Server{Config: c, DB: db, started: time.Now(), clients: map[string]*client{}, rates: map[string]bucket{}}
+	s := &Server{Config: c, DB: db, started: time.Now(), clients: map[string]*client{}, rates: map[string]bucket{}, chatRates: map[string]bucket{}}
 	id := uuid.NewString()
 	if _, e := db.Exec("INSERT OR IGNORE INTO server_config VALUES ('id',?)", id); e != nil {
 		return nil, e
@@ -79,6 +90,15 @@ func New(c config.Config, db *sql.DB) (*Server, error) {
 	if e := s.reloadPolicy(); e != nil {
 		return nil, e
 	}
+	if e := s.DB.QueryRow("SELECT count(*) FROM chat_messages").Scan(&s.chatStored); e != nil {
+		return nil, e
+	}
+	if e := s.pruneChat(); e != nil {
+		return nil, e
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.maintenanceCancel = cancel
+	go s.screenMaintenance(ctx)
 	return s, nil
 }
 func (s *Server) Handler() http.Handler {
@@ -203,7 +223,7 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	challenge := identity.New(s.ID, h.ClientVersion, h.Nickname, h.PublicKey)
-	if write(hs, c, protocol.Message("SERVER_HELLO", hello.RequestID, map[string]any{"protocol_version": protocol.Version, "server_version": protocol.ServerVersion, "server_name": s.Config.Server.Name, "server_id": s.ID, "nonce": challenge.Nonce, "challenge_context": challenge.Context, "media_configuration": map[string]any{"signaling_path": "/livekit", "udp_port": s.Config.LiveKit.MediaUDPPort, "tcp_port": s.Config.LiveKit.MediaTCPPort}, "minimum_client_version": s.Config.Server.MinimumClientVersion, "features": []string{"voice"}})) != nil {
+	if write(hs, c, protocol.Message("SERVER_HELLO", hello.RequestID, map[string]any{"protocol_version": protocol.Version, "server_version": protocol.ServerVersion, "server_name": s.Config.Server.Name, "server_id": s.ID, "nonce": challenge.Nonce, "challenge_context": challenge.Context, "media_configuration": map[string]any{"signaling_path": "/livekit", "udp_port": s.Config.LiveKit.MediaUDPPort, "tcp_port": s.Config.LiveKit.MediaTCPPort}, "minimum_client_version": s.Config.Server.MinimumClientVersion, "features": []string{"voice", "chat", "screen_share"}})) != nil {
 		return
 	}
 	auth, e := read(hs, c)
@@ -235,6 +255,10 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 	if banned, e := s.banned(p.user.Fingerprint, ip); e != nil || banned {
 		s.mu.Unlock()
 		write(ctx, c, protocol.Message("ERROR", auth.RequestID, map[string]string{"code": "BANNED"}))
+		return
+	}
+	if _, e = s.DB.Exec("INSERT INTO chat_peers VALUES (?,?) ON CONFLICT(fingerprint) DO UPDATE SET nickname=excluded.nickname", p.user.Fingerprint, p.user.Nickname); e != nil {
+		s.mu.Unlock()
 		return
 	}
 	s.clients[p.user.ID] = p
@@ -360,10 +384,21 @@ func (s *Server) handle(ctx context.Context, p *client, m protocol.Envelope) {
 			s.sendError(p, m.RequestID, "INVALID_INPUT")
 			return
 		}
-		p.user.Nickname = v.Nickname
+		if e := s.setNickname(p, v.Nickname); e != nil {
+			s.sendError(p, m.RequestID, "DATABASE_ERROR")
+			return
+		}
 		s.broadcast("USER_UPDATED", p.user)
 		s.send(p, "ACK", m.RequestID, nil)
 	default:
+		if strings.HasPrefix(m.Type, "CHAT_") {
+			s.chatOperation(p, m)
+			return
+		}
+		if strings.HasPrefix(m.Type, "SCREEN_") {
+			s.screenOperation(ctx, p, m)
+			return
+		}
 		s.operation(ctx, p, m)
 	}
 }
@@ -371,6 +406,7 @@ func (s *Server) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.closing = true
+	s.maintenanceCancel()
 	for _, p := range s.clients {
 		p.cancel()
 		p.conn.CloseNow()
@@ -378,3 +414,11 @@ func (s *Server) Close() {
 }
 
 var _ = slog.Info
+
+func (s *Server) setNickname(p *client, name string) error {
+	_, e := s.DB.Exec("INSERT INTO chat_peers VALUES (?,?) ON CONFLICT(fingerprint) DO UPDATE SET nickname=excluded.nickname", p.user.Fingerprint, name)
+	if e == nil {
+		p.user.Nickname = name
+	}
+	return e
+}

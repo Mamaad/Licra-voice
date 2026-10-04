@@ -43,8 +43,22 @@ func (s *Server) seed() error {
 	}
 	defer tx.Rollback()
 	for _, p := range permissions.Names {
-		if _, e = tx.Exec("INSERT OR IGNORE INTO permissions VALUES (?)", p); e != nil {
+		res, err := tx.Exec("INSERT OR IGNORE INTO permissions VALUES (?)", p)
+		e = err
+		if e != nil {
 			return e
+		}
+		added, _ := res.RowsAffected()
+		if added > 0 {
+			for _, role := range []string{"Owner", "Administrator", "Moderator", "Member", "Guest"} {
+				var n int
+				tx.QueryRow("SELECT count(*) FROM roles WHERE id=?", role).Scan(&n)
+				if n == 1 && defaultPermission(role, p) {
+					if _, e = tx.Exec("INSERT OR IGNORE INTO role_permissions VALUES (?,?,'ALLOW')", role, p); e != nil {
+						return e
+					}
+				}
+			}
 		}
 	}
 	for _, name := range []string{"Owner", "Administrator", "Moderator", "Member", "Guest"} {
@@ -57,7 +71,7 @@ func (s *Server) seed() error {
 	if e == sql.ErrNoRows {
 		for _, role := range []string{"Owner", "Administrator", "Moderator", "Member", "Guest"} {
 			for _, p := range permissions.Names {
-				allow := role == "Owner" || role == "Administrator" || (role == "Moderator" && (p == "user.kick" || p == "voice.mute_others" || p == "channel.move_others" || p == "role.view")) || p == "server.view" || p == "channel.join" || p == "channel.move_self" || p == "voice.speak"
+				allow := defaultPermission(role, p)
 				if allow {
 					if _, e = tx.Exec("INSERT INTO role_permissions VALUES (?,?,'ALLOW')", role, p); e != nil {
 						return e
@@ -248,6 +262,7 @@ func (s *Server) permissionsUpdated() {
 		}
 	}
 	s.reconcileVoice()
+	s.reconcileScreens()
 	chs, _ := s.channels()
 	for _, p := range s.clients {
 		cm := map[string]map[string]bool{}
@@ -273,7 +288,9 @@ func (s *Server) snapshot(p *client, id string) error {
 	for _, c := range chs {
 		cm[c.ID] = s.permissionMap(p.user.Fingerprint, c.ID)
 	}
-	s.send(p, "SNAPSHOT", id, map[string]any{"server": map[string]any{"name": s.Config.Server.Name, "id": s.ID, "bootstrap_available": s.bootstrapAvailable()}, "self_id": p.user.ID, "channels": chs, "users": s.users(), "roles": rs, "permissions": s.permissionMap(p.user.Fingerprint, ""), "channel_permissions": cm})
+	s.send(p, "SNAPSHOT", id, map[string]any{"server": map[string]any{"name": s.Config.Server.Name, "id": s.ID, "bootstrap_available": s.bootstrapAvailable()}, "self_id": p.user.ID, "channels": chs, "users": s.users(), "roles": rs, "permissions": s.permissionMap(p.user.Fingerprint, ""), "channel_permissions": cm, "chat": s.Config.Chat, "screen": s.Config.Screen})
+	s.chatUnread(p)
+	s.sendScreenState(p)
 	return nil
 }
 func (s *Server) seedPath() string {
@@ -354,4 +371,8 @@ func (s *Server) claim(fp, token string) error {
 func (s *Server) bootstrapAvailable() bool {
 	var value string
 	return s.DB.QueryRow("SELECT value FROM server_config WHERE key='bootstrap_hash'").Scan(&value) == nil && value != "consumed"
+}
+
+func defaultPermission(role, p string) bool {
+	return role == "Owner" || role == "Administrator" || (role == "Moderator" && (p == "user.kick" || p == "voice.mute_others" || p == "channel.move_others" || p == "role.view" || p == "chat.channel.delete_others" || p == "chat.moderation.view_deleted" || p == "screen.stop_others")) || p == "server.view" || p == "channel.join" || p == "channel.move_self" || p == "voice.speak" || p == "screen.share" || p == "screen.watch" || p == "chat.channel.view" || p == "chat.channel.send" || p == "chat.channel.history" || p == "chat.channel.edit_own" || p == "chat.channel.delete_own" || p == "chat.private.send"
 }

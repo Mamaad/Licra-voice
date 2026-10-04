@@ -16,11 +16,12 @@ Une room est nommée `channel_<UUID>` : renommer un salon ne la change pas.
 Une session LiveKit est identifiée par l’UUID de la connexion de contrôle,
 qui est lié à un fingerprint complet SHA-256 de la clé publique Ed25519.
 Le contrôle reste connecté pendant les changements de rooms.
-Lors d’un déplacement, le serveur annule les anciens tunnels de signaling,
-attend leur fermeture et retire le participant avant de délivrer le nouveau
-salon. Le proxy rejette ensuite les credentials de l’ancien salon.
-Les tokens permettent uniquement la publication microphone ; publication
-vidéo et data sont interdites en V1.
+Lors d’un déplacement, le serveur invalide l’ancien contexte, retire le
+participant LiveKit, puis ferme et attend les anciens tunnels avant de délivrer
+le nouveau salon. Le proxy rejette ensuite les credentials de l’ancien salon.
+Les tokens vocaux permettent uniquement la publication microphone ; les
+tokens écran autorisent uniquement `screen_share` dans une room distincte
+`screen_<UUID>`. Les publications data et webcam restent interdites.
 
 Les présences et limites de requêtes sont en mémoire. SQLite contient les
 identités publiques connues, salons, attributions, bans et configuration.
@@ -41,9 +42,13 @@ n’est envoyé par le client sur le WebSocket de contrôle. Le SDK LiveKit peut
 continuer à produire ses propres notifications de speakers ; l’interface
 calcule ses indicateurs à partir des pistes audio reçues localement.
 
-`FeatureCapability` prévoit `voice`, `screen_share`, `youtube_sync`,
-`server_files`, `remote_browser`. Seule `voice` est annoncée. Les futures
-sources écran passeront par le même SFU après évolution des grants.
-Le futur Chromium devra s’exécuter dans un service `browser-worker` isolé,
-jamais dans le serveur Go principal. Les ACL futures sont déjà présentes ;
-leur présence ne constitue pas une implémentation de ces fonctionnalités.
+Les capacités actives sont `voice`, `chat` et `screen_share`.
+Le chat utilise le contrôle WebSocket et SQLite, indépendamment de LiveKit.
+Les médias écran passent directement par le SFU sans transcodage.
+Le partage utilise une connexion LiveKit séparée : le droit `screen.watch`
+ne modifie donc pas la réception vocale. Les rooms sont choisies par le serveur.
+
+Le navigateur collaboratif, YouTube, fichiers, webcam et tableau blanc restent
+différés. Aucun worker supplémentaire ni dépendance runtime n’a été ajouté.
+
+Configuration, protocole, migration et limites : [chat et écran](chat-screen.md).

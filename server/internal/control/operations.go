@@ -7,6 +7,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"licra/server/internal/permissions"
 	"licra/server/internal/protocol"
+	"log/slog"
 	"time"
 )
 
@@ -452,6 +453,7 @@ func (s *Server) join(ctx context.Context, actor, target *client, id, ch, passwo
 		}
 	}
 	if e := s.media().Ensure(ctx, ch); e != nil {
+		slog.Warn("voice room unavailable", "error", e)
 		s.sendError(actor, id, "MEDIA_UNAVAILABLE")
 		return
 	}
@@ -461,6 +463,7 @@ func (s *Server) join(ctx context.Context, actor, target *client, id, ch, passwo
 		return
 	}
 	if e = s.disconnectVoice(ctx, target); e != nil {
+		slog.Warn("voice cleanup failed", "error", e)
 		s.sendError(actor, id, "MEDIA_UNAVAILABLE")
 		return
 	}

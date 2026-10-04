@@ -25,9 +25,13 @@ import {
   type DragItem,
   type DropPosition,
 } from "./Shell";
+import { ChatPanel } from "./Chat";
+import { ScreenPanel } from "./Screens";
+import { useChat, openPrivate } from "./chat";
 import { ContextMenu } from "./ContextMenu";
 import { CLIENT_VERSION } from "./version";
 export function App() {
+  const chat = useChat();
   const s = useStore();
   const [address, setAddress] = useState(s.history[0] ?? ""),
     [nickname, setNickname] = useState(localStorage.getItem("nickname") ?? ""),
@@ -429,36 +433,53 @@ export function App() {
                         </span>
                       </div>
                     </div>
-                    <div className="members-heading">
-                      <h2>Membres ({members.length})</h2>
-                      <select
-                        aria-label="Trier les membres"
-                        value={sort}
-                        onChange={(e) => setSort(e.target.value)}
-                      >
-                        <option value="name">Trier : pseudonyme</option>
-                        <option value="voice">Trier : activité vocale</option>
-                      </select>
-                    </div>
-                    <div className="member-list">
-                      {members.map((u) => (
-                        <UserRow
-                          key={u.id}
-                          user={u}
-                          onSelect={() => setProfile(u)}
-                          onContext={context}
-                        />
-                      ))}
-                      {!members.length && (
-                        <div className="empty-state">
-                          <Icon name="users" />
-                          <h3>La conversation commence ici</h3>
-                          <p>
-                            Rejoignez le salon ou invitez vos amis avec
-                            l’adresse du serveur.
-                          </p>
+                    <ScreenPanel channelId={selected.id} />
+                    <div className="conversation-layout">
+                      <ChatPanel
+                        key={chat.privatePeer?.fingerprint ?? selected.id}
+                        channelId={chat.privatePeer ? undefined : selected.id}
+                        peer={chat.privatePeer ?? undefined}
+                        onClose={
+                          chat.privatePeer
+                            ? () => chat.set({ privatePeer: null })
+                            : undefined
+                        }
+                      />
+                      <div className="conversation-members">
+                        <div className="members-heading">
+                          <h2>Membres ({members.length})</h2>
+                          <select
+                            aria-label="Trier les membres"
+                            value={sort}
+                            onChange={(e) => setSort(e.target.value)}
+                          >
+                            <option value="name">Trier : pseudonyme</option>
+                            <option value="voice">
+                              Trier : activité vocale
+                            </option>
+                          </select>
                         </div>
-                      )}
+                        <div className="member-list">
+                          {members.map((u) => (
+                            <UserRow
+                              key={u.id}
+                              user={u}
+                              onSelect={() => setProfile(u)}
+                              onContext={context}
+                            />
+                          ))}
+                          {!members.length && (
+                            <div className="empty-state">
+                              <Icon name="users" />
+                              <h3>La conversation commence ici</h3>
+                              <p>
+                                Rejoignez le salon ou invitez vos amis avec
+                                l’adresse du serveur.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </>
@@ -768,6 +789,17 @@ export function App() {
                   </select>
                 </label>
               )}
+              {menu.user.id !== s.self_id &&
+                s.permissions["chat.private.send"] && (
+                  <button
+                    onClick={() => {
+                      openPrivate(menu.user!.fingerprint, menu.user!.nickname);
+                      setMenu(null);
+                    }}
+                  >
+                    Envoyer un message privé
+                  </button>
+                )}
               <button
                 onClick={() => {
                   setProfile(menu.user!);

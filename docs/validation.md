@@ -76,3 +76,10 @@ La CI Windows fournit un binaire natif et le workflow release un installateur
 signé. Le scénario d’update entre deux releases et les microphones physiques
 requièrent un environnement Windows et ne sont pas déclarés validés par une
 simple compilation.
+
+## Phase 0.2.0 — chat et partage d’écran
+
+La suite complète locale Go/SQLite/LiveKit/React passe, y compris perte réseau,
+reconnexion et voix pendant partage. Détail des commandes, profils réellement
+observés, limites Windows et mesures :
+[rapport de phase](phase-chat-screen-report.md).

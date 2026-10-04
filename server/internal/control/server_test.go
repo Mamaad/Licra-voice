@@ -14,6 +14,7 @@ import (
 	"licra/server/internal/store"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
 	"net/url"
 	"path/filepath"
 	"strconv"
@@ -283,5 +284,38 @@ func TestBootstrapAvailability(t *testing.T) {
 	_, after := connectTest(t, host)
 	if after["server"].(map[string]any)["bootstrap_available"] != false {
 		t.Fatal(after["server"])
+	}
+}
+
+func TestMediaProxyCancellationClosesSilentClient(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, e := websocket.Accept(w, r, nil)
+		if e != nil {
+			return
+		}
+		defer c.CloseNow()
+		<-ctx.Done()
+	}))
+	defer upstream.Close()
+	target, _ := url.Parse(upstream.URL)
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	done := make(chan struct{})
+	h := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxy.ServeHTTP(mediaResponseWriter{w, ctx}, r.WithContext(ctx))
+		close(done)
+	}))
+	defer h.Close()
+	c, _, e := websocket.Dial(context.Background(), "ws"+strings.TrimPrefix(h.URL, "http"), nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.CloseNow()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("proxy waited for silent client after cancellation")
 	}
 }

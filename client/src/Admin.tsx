@@ -136,6 +136,18 @@ import { Icon, Avatar, StatusDot } from "./ui";
 import { voiceDiagnostics } from "./voice";
 
 const labels: Record<string, string> = {
+  "chat.channel.view": "Voir le chat du salon",
+  "chat.channel.send": "Envoyer dans le chat",
+  "chat.channel.history": "Consulter l’historique",
+  "chat.channel.edit_own": "Modifier ses messages",
+  "chat.channel.delete_own": "Supprimer ses messages",
+  "chat.channel.delete_others": "Supprimer les messages des autres",
+  "chat.private.send": "Envoyer des messages privés",
+  "chat.moderation.view_deleted": "Voir les messages supprimés",
+  "screen.share": "Partager son écran",
+  "screen.watch": "Regarder les partages",
+  "screen.stop_others": "Arrêter le partage des autres",
+
   "server.view": "Voir le serveur",
   "server.edit": "Modifier le serveur",
   "server.shutdown": "Arrêter le serveur",
@@ -163,6 +175,8 @@ const labels: Record<string, string> = {
   "permissions.edit": "Modifier les permissions",
 };
 const groups = [
+  { name: "CHAT — Messages et modération", icon: "users", prefixes: ["chat."] },
+  { name: "ÉCRAN — Partage d’écran", icon: "activity", prefixes: ["screen."] },
   { name: "VOICE — Permissions vocales", icon: "mic", prefixes: ["voice."] },
   {
     name: "CHANNEL — Permissions des salons",

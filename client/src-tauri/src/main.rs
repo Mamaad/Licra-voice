@@ -60,6 +60,49 @@ async fn identity_import(app: tauri::AppHandle, passphrase: String) -> Result<()
     .await
     .map_err(|e| e.to_string())?
 }
+#[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    if url.len() > 8192 {
+        return Err("Link too long".into());
+    }
+    let parsed = tauri::Url::parse(&url).map_err(|_| "Invalid URL")?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
+        return Err("Only HTTP/HTTPS links are allowed".into());
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        let value: Vec<u16> = std::ffi::OsStr::new(parsed.as_str())
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+        let result = unsafe {
+            windows_sys::Win32::UI::Shell::ShellExecuteW(
+                std::ptr::null_mut(),
+                std::ptr::null(),
+                value.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                1,
+            )
+        };
+        if result as isize <= 32 {
+            return Err("Could not open system browser".into());
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(parsed.as_str())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
 fn main() {
     let result = tauri::Builder::default()
         .on_permission_request(|webview, kind| {
@@ -91,7 +134,8 @@ fn main() {
             identity_public,
             identity_sign,
             identity_export,
-            identity_import
+            identity_import,
+ open_external
         ])
         .run(tauri::generate_context!());
     if let Err(e) = result {

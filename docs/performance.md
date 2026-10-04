@@ -30,3 +30,10 @@ mesurés aussi. Aucun nombre magique d’utilisateurs n’est annoncé.
 
 Opus mono 24/32/64 kbps avec DTX et RED. Le DSP et les niveaux restent locaux.
 SQLite n’est pas écrit pour les niveaux ou chaque événement de présence.
+
+## Partage d’écran 0.2.0
+
+Mesures locales avec un publisher/trois viewers et deux publishers/deux viewers :
+[rapport](phase-chat-screen-report.md#mesures-reproductibles) et
+[données RTP/CPU complètes](benchmarks/screen-local.json). Les contraintes FPS
+demandées sont distinguées des FPS synthétiques effectivement observés.

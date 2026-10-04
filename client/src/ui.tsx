@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import type { User } from "./types";
 const paths: Record<string, ReactNode> = {
+  screen: (<><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></>),
   server: (
     <>
       <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9Z" />

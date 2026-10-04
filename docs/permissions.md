@@ -39,3 +39,6 @@ Un salon non permanent est supprimé lorsque son dernier utilisateur quitte et
 qu’il n’a plus de sous-salons, ainsi qu’au démarrage du daemon. Un salon
 permanent ne peut pas être placé sous un ancêtre temporaire. Les commandes
 CLI n’effacent pas les salons temporaires d’un daemon déjà en cours.
+
+Les droits atomiques `chat.*` et `screen.*` et leurs valeurs par défaut sont
+décrits dans [Chat et partage d’écran](chat-screen.md#permissions).

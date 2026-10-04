@@ -17,7 +17,8 @@
         "screen_share",
         "youtube_sync",
         "server_files",
-        "remote_browser"
+        "remote_browser",
+        "chat"
       ]
     },
     "Channel": {
@@ -199,6 +200,86 @@
               "type": "boolean"
             }
           }
+        },
+        "chat": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "history_enabled": {
+              "type": "boolean"
+            },
+            "max_message_length": {
+              "type": "integer"
+            },
+            "messages_per_second": {
+              "type": "integer"
+            },
+            "messages_per_minute": {
+              "type": "integer"
+            },
+            "edits_per_minute": {
+              "type": "integer"
+            },
+            "typing_per_second": {
+              "type": "integer"
+            },
+            "channel_history_limit": {
+              "type": "integer"
+            },
+            "private_history_limit": {
+              "type": "integer"
+            },
+            "retention_days": {
+              "type": "integer"
+            },
+            "max_stored_messages": {
+              "type": "integer"
+            },
+            "max_threads": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "enabled",
+            "history_enabled",
+            "max_message_length",
+            "messages_per_second",
+            "messages_per_minute",
+            "edits_per_minute",
+            "typing_per_second",
+            "channel_history_limit",
+            "private_history_limit",
+            "retention_days"
+          ]
+        },
+        "screen": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "max_shares_per_channel": {
+              "type": "integer"
+            },
+            "max_bitrate": {
+              "type": "integer"
+            },
+            "max_height": {
+              "type": "integer"
+            },
+            "max_fps": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "enabled",
+            "max_shares_per_channel",
+            "max_bitrate",
+            "max_height",
+            "max_fps"
+          ]
         }
       },
       "required": [
@@ -235,6 +316,89 @@
         "payload"
       ],
       "additionalProperties": false
+    },
+    "ChatMessage": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "channel_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "author_fingerprint": {
+          "type": "string"
+        },
+        "author_nickname_snapshot": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "edited_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deleted_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reply_to_message_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reply": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "nickname": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "deleted": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "nickname",
+            "content",
+            "deleted"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "thread_id",
+        "channel_id",
+        "author_fingerprint",
+        "author_nickname_snapshot",
+        "content",
+        "created_at",
+        "edited_at",
+        "deleted_at",
+        "reply_to_message_id"
+      ],
+      "additionalProperties": false
     }
   },
   "events": [
@@ -261,7 +425,29 @@
     "BAN",
     "ERROR",
     "PING",
-    "PONG"
+    "PONG",
+    "CHAT_OPEN",
+    "CHAT_HISTORY",
+    "CHAT_SEND",
+    "CHAT_EDIT",
+    "CHAT_DELETE",
+    "CHAT_READ",
+    "CHAT_LIST",
+    "CHAT_TYPING",
+    "CHAT_MESSAGE_CREATED",
+    "CHAT_MESSAGE_EDITED",
+    "CHAT_MESSAGE_DELETED",
+    "PRIVATE_MESSAGE_CREATED",
+    "PRIVATE_MESSAGE_EDITED",
+    "PRIVATE_MESSAGE_DELETED",
+    "CHAT_UNREAD",
+    "TYPING_STARTED",
+    "TYPING_STOPPED",
+    "SCREEN_JOIN",
+    "SCREEN_START",
+    "SCREEN_STOP",
+    "SCREEN_STATE",
+    "SCREEN_REVOKED"
   ],
   "permissions": [
     "server.view",
@@ -295,6 +481,17 @@
     "future.browser_control",
     "future.files_view",
     "future.files_upload",
-    "future.files_delete"
+    "future.files_delete",
+    "chat.channel.view",
+    "chat.channel.send",
+    "chat.channel.history",
+    "chat.channel.edit_own",
+    "chat.channel.delete_own",
+    "chat.channel.delete_others",
+    "chat.private.send",
+    "chat.moderation.view_deleted",
+    "screen.share",
+    "screen.watch",
+    "screen.stop_others"
   ]
 }

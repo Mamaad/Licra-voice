@@ -172,7 +172,10 @@ func (s *Server) moderation(ctx context.Context, p *client, m protocol.Envelope)
 				invalid()
 				return
 			}
-			target.user.Nickname = v.Nickname
+			if e := s.setNickname(target, v.Nickname); e != nil {
+				s.sendError(p, id, "DATABASE_ERROR")
+				return
+			}
 			s.broadcast("USER_UPDATED", target.user)
 		}
 		s.send(p, "ACK", id, nil)

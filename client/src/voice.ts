@@ -523,7 +523,16 @@ export async function voiceDiagnostics() {
       sent: bytesSent,
     };
   return {
-    connected: room === current && epoch === generation,
+    connected:
+      room === current &&
+      epoch === generation &&
+      current.state === "connected" &&
+      current.name ===
+        "channel_" +
+          useStore
+            .getState()
+            .users.find((u) => u.id === useStore.getState().self_id)
+            ?.channel_id,
     remoteParticipants: current.remoteParticipants.size,
     codec: codec || null,
     transport: transport || null,

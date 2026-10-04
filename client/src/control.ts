@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { useStore, applyEvent, remember } from "./store";
 import { parseAddress } from "./address.mjs";
 import { joinVoice, leaveVoice, syncVoicePermissions } from "./voice";
+import { applyChatEvent } from "./chat";
+import { screenEvent, syncScreens, closeScreens } from "./screen";
 import type { Envelope } from "./types";
 import { CLIENT_VERSION, PROTOCOL_VERSION } from "./version";
 export { CLIENT_VERSION, PROTOCOL_VERSION };
@@ -36,6 +38,12 @@ const actions: Record<string, string> = {
   MUTE_USER: "Couper un utilisateur",
 };
 const codes: Record<string, string> = {
+  CHAT_DISABLED: "Chat désactivé par le serveur",
+  CHAT_STORAGE_LIMIT: "Nombre maximal de conversations atteint",
+  SCREEN_DISABLED: "Partage d’écran désactivé par le serveur",
+  SCREEN_LIMIT: "Nombre maximal de partages atteint dans ce salon",
+  SCREEN_ALREADY_ACTIVE: "Vous partagez déjà une source",
+  DATABASE_ERROR: "Le serveur n’a pas pu enregistrer cette opération",
   PERMISSION_DENIED: "Permission refusée",
   INVALID_INPUT: "Saisie invalide",
   PROTECTED_ROLE: "Ce rôle est protégé",
@@ -128,7 +136,7 @@ async function open(address: string, nickname: string) {
         nickname,
         device_public_key: publicKey,
         platform: "windows",
-        capabilities: ["voice"],
+        capabilities: ["voice", "chat", "screen_share"],
       });
     };
     ws.onmessage = async (e) => {
@@ -189,7 +197,9 @@ async function open(address: string, nickname: string) {
           }
           if (!authenticated) {
             clearTimeout(timeout);
-            intent = false;
+            // A dropped transport can leave the previous server session alive until its heartbeat expires.
+            if (p.code !== "IDENTITY_CONNECTED" || retries === 0)
+              intent = false;
             ws.close();
             reject(error);
           }
@@ -216,6 +226,14 @@ async function open(address: string, nickname: string) {
           }
         }
         applyEvent(m.type, p);
+        applyChatEvent(m.type, p);
+        screenEvent(m.type, p);
+        if (
+          m.type === "PERMISSIONS_UPDATED" ||
+          m.type === "USER_MOVED" ||
+          m.type === "SCREEN_STATE"
+        )
+          void syncScreens(base).catch(report);
         if (
           m.type === "PERMISSIONS_UPDATED" ||
           (m.type === "VOICE_STATE_UPDATED" &&
@@ -236,9 +254,15 @@ async function open(address: string, nickname: string) {
           void request("PING").catch(() => {});
           resolve();
         }
-        if (m.type === "VOICE_JOIN")
+        if (m.type === "VOICE_JOIN") {
+          void closeScreens();
           await joinVoice(base + p.signaling_path, p);
-        if (m.type === "VOICE_LEFT") await leaveVoice();
+          void syncScreens(base).catch(report);
+        }
+        if (m.type === "VOICE_LEFT") {
+          await closeScreens();
+          await leaveVoice();
+        }
         if (m.type === "VOICE_REJOIN_REQUIRED") await request("REFRESH_VOICE");
       } catch (error) {
         useStore.getState().set({ error: String(error) });
@@ -255,6 +279,7 @@ async function open(address: string, nickname: string) {
       clearTimeout(timeout);
       if (ws !== socket) return;
       void leaveVoice();
+      void closeScreens();
       for (const [, p] of pending) {
         clearTimeout(p.timer);
         p.reject(new Error("Connexion fermée"));
@@ -286,6 +311,7 @@ export function disconnect() {
   socket = undefined;
   old?.close();
   void leaveVoice();
+  void closeScreens();
   for (const [, p] of pending) {
     clearTimeout(p.timer);
     p.reject(new Error("Déconnexion"));
@@ -310,4 +336,8 @@ export async function changeNickname(nickname: string) {
   await request("SET_NICKNAME", { nickname });
   if (last) last.nickname = nickname;
   localStorage.setItem("nickname", nickname);
+}
+
+export function mediaBase() {
+  return base;
 }
