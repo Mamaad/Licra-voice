@@ -18,6 +18,9 @@ Vérifications locales effectuées :
   une copie altérée est refusée. Le workflow vérifie également installation
   par utilisateur, réinstallation en mode update et conservation des données
   lors d’une désinstallation silencieuse.
+- Installation Linux non-root sur ce poste : services systemd utilisateur,
+  health, diagnostics SQLite, redémarrage et désinstallation avec conservation
+  de la configuration et de la base ; migrations concurrentes testées.
 - Charge control plane locale : 50 sessions, résultats JSON conservés.
 - Test média réel : `npm ci` à la racine, `npx playwright install chromium`,
   `npm run test:media`. Il lance LiveKit officiel et trois clients WebRTC avec

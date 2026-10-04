@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"syscall"
 )
 
 func Open(path string) (*sql.DB, error) {
@@ -19,13 +20,24 @@ func Open(path string) (*sql.DB, error) {
 		return nil, err
 	}
 	f.Close()
+	// Linux file lock serializes first-time WAL setup and migrations across processes.
+	lock, err := os.OpenFile(path+".migration.lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	defer lock.Close()
+	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return nil, err
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
 	fail := func(err error) (*sql.DB, error) { db.Close(); return nil, err }
-	for _, q := range []string{"PRAGMA foreign_keys=ON", "PRAGMA journal_mode=WAL", "PRAGMA busy_timeout=5000", "CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY)"} {
+	for _, q := range []string{"PRAGMA busy_timeout=5000", "PRAGMA foreign_keys=ON", "PRAGMA journal_mode=WAL", "CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY)"} {
 		if _, err = db.Exec(q); err != nil {
 			return fail(err)
 		}
@@ -40,13 +52,6 @@ func Open(path string) (*sql.DB, error) {
 		if filepath.Ext(name) != ".sql" {
 			continue
 		}
-		var n int
-		if err = db.QueryRow("SELECT count(*) FROM schema_migrations WHERE version=?", name).Scan(&n); err != nil {
-			return fail(err)
-		}
-		if n > 0 {
-			continue
-		}
 		data, e := migrations.Files.ReadFile(name)
 		if e != nil {
 			return fail(e)
@@ -54,6 +59,15 @@ func Open(path string) (*sql.DB, error) {
 		tx, e := db.Begin()
 		if e != nil {
 			return fail(e)
+		}
+		var n int
+		if e = tx.QueryRow("SELECT count(*) FROM schema_migrations WHERE version=?", name).Scan(&n); e != nil {
+			tx.Rollback()
+			return fail(e)
+		}
+		if n > 0 {
+			tx.Rollback()
+			continue
 		}
 		if _, e = tx.Exec(string(data)); e == nil {
 			_, e = tx.Exec("INSERT INTO schema_migrations VALUES (?)", name)
