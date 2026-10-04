@@ -19,7 +19,7 @@ jobs:
       - run: ./scripts/download-livekit.sh
       - run: |
           mkdir -p dist/licra
-          cp -a bin scripts packaging docs README.md LICENSE dist/licra/
+          cp -a bin scripts packaging docs README.md LICENSE start.sh stop.sh dist/licra/
           tar -czf dist/licra-server-linux-x86_64.tar.gz -C dist licra
           cd dist
           sha256sum licra-server-linux-x86_64.tar.gz > checksums-linux.txt
@@ -46,6 +46,7 @@ jobs:
           cache-dependency-path: client/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
       - run: python scripts/check-versions.py
+      - run: python scripts/test-release.py
       - run: npm ci && npm test && npm run tauri -- build --bundles nsis
         working-directory: client
       - name: Verify signature and installer data retention
