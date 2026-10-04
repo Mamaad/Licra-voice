@@ -1,4 +1,4 @@
-# Rapport de phase — Licra 0.2.1
+# Rapport de phase — Licra 0.2.2
 
 Projet existant conservé : design Licra, voix Opus, identité Ed25519/DPAPI,
 permissions, salons, updater signé et installation serveur. Aucune nouvelle
@@ -146,7 +146,10 @@ indicateurs de saisie bornés au cache de conversations.
 
 La version 0.2.0 taguée initialement a été bloquée par le contrôle de cohérence
 avant publication : le fichier de version Tauri n’était pas inclus dans le
-commit. La livraison 0.2.1 corrige cette omission ; les fonctionnalités et la
+commit. La version 0.2.1 a ensuite révélé une collision de modules sur Windows :
+`Chat.tsx` et `chat.ts`. Le composant s’appelle désormais `ChatPanel.tsx` et
+un test vérifie les noms de modules indépendamment de la casse.
+La livraison 0.2.2 corrige ces deux problèmes ; les fonctionnalités et la
 migration restent identiques aux mesures locales précédentes.
 
 ## Limites et livraison
@@ -163,16 +166,16 @@ ce n’est pas un policier de trafic par participant pour un client modifié.
 conversation ; cela ne garantit pas zéro stockage. Le serveur peut lire les MP.
 Aucun Markdown, upload, webcam, audio système, YouTube, navigateur ou tableau blanc.
 
-Les builds officiels sont distribués via [la release 0.2.1](https://github.com/Mamaad/Licra-voice/releases/tag/v0.2.1)
+Les builds officiels sont distribués via [la release 0.2.2](https://github.com/Mamaad/Licra-voice/releases/tag/v0.2.2)
 et l’updater signé existant. Le client peut se connecter à un ancien serveur ;
-les nouvelles fonctions nécessitent le serveur 0.2.1. Aucun port supplémentaire.
+les nouvelles fonctions nécessitent le serveur 0.2.2. Aucun port supplémentaire.
 La migration et le redémarrage du serveur de production doivent être autorisés
 avant installation ; les tests ci-dessus utilisent un serveur isolé.
 
 ## Fichiers modifiés/ajoutés
 
 Les principaux ajouts sont `chat.go`, `screen.go`, la migration 002,
-`Chat.tsx`, `chat.ts`, `Screens.tsx`, `screen.ts` et les scénarios de tests.
+`ChatPanel.tsx`, `chat.ts`, `Screens.tsx`, `screen.ts` et les scénarios de tests.
 Les autres modifications étendent les points d’entrée existants, types,
 permissions, IPC natif, versions et documentation. Liste complète :
 
@@ -189,7 +192,7 @@ permissions, IPC natif, versions et documentation. Liste complète :
 - `client/src-tauri/tauri.conf.json`
 - `client/src/Admin.tsx`
 - `client/src/App.tsx`
-- `client/src/Chat.tsx`
+- `client/src/ChatPanel.tsx`
 - `client/src/Screens.tsx`
 - `client/src/Shell.tsx`
 - `client/src/chat.ts`
@@ -245,3 +248,5 @@ permissions, IPC natif, versions et documentation. Liste complète :
 - `server/migrations/002_chat.sql`
 - `shared/protocol/v1.schema.json`
 - `tools/ui-check/run.mjs`
+
+Fichier de test ajouté : `client/tests/module-names.test.mjs`.

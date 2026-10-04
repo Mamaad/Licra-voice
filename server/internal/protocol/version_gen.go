@@ -2,4 +2,4 @@
 package protocol
 
 const Version = 1
-const ServerVersion = "0.2.1"
+const ServerVersion = "0.2.2"

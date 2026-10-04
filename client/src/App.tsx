@@ -25,7 +25,7 @@ import {
   type DragItem,
   type DropPosition,
 } from "./Shell";
-import { ChatPanel } from "./Chat";
+import { ChatPanel } from "./ChatPanel";
 import { ScreenPanel } from "./Screens";
 import { useChat, openPrivate } from "./chat";
 import { ContextMenu } from "./ContextMenu";

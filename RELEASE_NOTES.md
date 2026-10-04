@@ -1,4 +1,4 @@
-Licra 0.2.1 — chat persistant et partage d’écran
+Licra 0.2.2 — chat persistant et partage d’écran
 
 - Chat par salon : historique SQLite, pagination de 50 messages, messages non lus, indicateur de saisie, réponse, modification et suppression selon permissions.
 - MP entre identités Ed25519 du même serveur, y compris hors salon vocal et avec livraison à la prochaine connexion du destinataire. Stockage sur le serveur, sans chiffrement de bout en bout.
@@ -13,4 +13,4 @@ Validation : tests Go avec race detector, persistance après réouverture, vrais
 
 Les captures locales sont synthétiques sous Chromium/Linux : environ 20 FPS observés pour les profils 1080p/1440p, et une source synthétique 96×96. Elles ne prouvent pas 60 FPS ni l’encodage GPU sur un poste Windows physique. Le build Windows est produit par la CI ; le sélecteur moniteur/fenêtre et les GPU physiques restent à confirmer sur vos postes.
 
-Les nouvelles fonctionnalités nécessitent également le serveur 0.2.1. Aucun nouveau port à ouvrir. Configuration et rapport : docs/chat-screen.md et docs/phase-chat-screen-report.md.
+Les nouvelles fonctionnalités nécessitent également le serveur 0.2.2. Aucun nouveau port à ouvrir. Configuration et rapport : docs/chat-screen.md et docs/phase-chat-screen-report.md.

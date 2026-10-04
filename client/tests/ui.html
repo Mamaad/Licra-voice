@@ -7,7 +7,7 @@ import * as control from '/src/control.ts';
 import * as voice from '/src/voice.ts';
 import * as screen from '/src/screen.ts';
 import * as chat from '/src/chat.ts';
-import * as chatUI from '/src/Chat.tsx';
+import * as chatUI from '/src/ChatPanel.tsx';
 import '/src/style.css';
 // Test-only replacement for native Ed25519/IPC; UI, control and audio remain production modules.
 const keys=await crypto.subtle.generateKey({name:'Ed25519'},true,['sign','verify']);

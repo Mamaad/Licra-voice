@@ -10,7 +10,7 @@ import {
   voiceDiagnostics,
 } from "./voice";
 import { report, request } from "./control";
-import { PrivateInbox } from "./Chat";
+import { PrivateInbox } from "./ChatPanel";
 import { useChat, openPrivate } from "./chat";
 import { useScreens } from "./screen";
 import { Modal } from "./Modal";

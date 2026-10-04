@@ -1,4 +1,4 @@
-# Chat et partage d’écran — 0.2.1
+# Chat et partage d’écran — 0.2.2
 
 ## Stockage et migration
 
