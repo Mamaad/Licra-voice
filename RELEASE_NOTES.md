@@ -11,6 +11,6 @@ Licra 0.2.2 — chat persistant et partage d’écran
 
 Validation : tests Go avec race detector, persistance après réouverture, vrais échanges WebSocket et LiveKit, deux publishers/deux viewers et un publisher/trois viewers, coupure et reconnexion, permissions, modération, XSS, voix Opus, seuil micro, options audio et affichage de 1000 à 3840 px.
 
-Les captures locales sont synthétiques sous Chromium/Linux : environ 20 FPS observés pour les profils 1080p/1440p, et une source synthétique 96×96. Elles ne prouvent pas 60 FPS ni l’encodage GPU sur un poste Windows physique. Le build Windows est produit par la CI ; le sélecteur moniteur/fenêtre et les GPU physiques restent à confirmer sur vos postes.
+Les captures locales sont synthétiques sous Chromium/Linux : environ 20 FPS observés pour les profils 1080p/1440p, et une source synthétique de très faible résolution. Elles ne prouvent pas 60 FPS ni l’encodage GPU sur un poste Windows physique. Le build Windows est produit par la CI ; le sélecteur moniteur/fenêtre et les GPU physiques restent à confirmer sur vos postes.
 
 Les nouvelles fonctionnalités nécessitent également le serveur 0.2.2. Aucun nouveau port à ouvrir. Configuration et rapport : docs/chat-screen.md et docs/phase-chat-screen-report.md.
