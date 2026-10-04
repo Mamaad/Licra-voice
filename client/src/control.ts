@@ -218,18 +218,22 @@ export function disconnect() {
     p.reject(new Error("Déconnexion"));
   }
   pending.clear();
-  useStore
-    .getState()
-    .set({
-      status: "disconnected",
-      users: [],
-      self_id: "",
-      permissions: {},
-      channel_permissions: {},
-    });
+  useStore.getState().set({
+    status: "disconnected",
+    users: [],
+    self_id: "",
+    permissions: {},
+    channel_permissions: {},
+  });
 }
 export function report(e: unknown) {
   useStore
     .getState()
     .set({ error: e instanceof Error ? e.message : String(e) });
+}
+
+export async function changeNickname(nickname: string) {
+  await request("SET_NICKNAME", { nickname });
+  if (last) last.nickname = nickname;
+  localStorage.setItem("nickname", nickname);
 }

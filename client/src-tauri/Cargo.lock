@@ -2036,6 +2036,7 @@ dependencies = [
  "argon2",
  "base64 0.22.1",
  "ed25519-dalek",
+ "minisign-verify",
  "rand",
  "serde",
  "serde_json",

@@ -4,15 +4,17 @@ use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use ed25519_dalek::{Signer, SigningKey};
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
-use std::{fs, path::Path};
+use std::{fs, path::Path, sync::Mutex};
+static IDENTITY_LOCK: Mutex<()> = Mutex::new(());
 use zeroize::Zeroizing;
 pub fn load(path: &Path) -> Result<SigningKey, String> {
+    let _guard = IDENTITY_LOCK.lock().map_err(|_| "Identity lock failed")?;
     if !path.exists() {
         if let Some(p) = path.parent() {
             fs::create_dir_all(p).map_err(err)?;
         }
         let key = SigningKey::generate(&mut OsRng);
-        store(path, &key)?;
+        write_identity(path, &key)?;
         return Ok(key);
     };
     let bytes = Zeroizing::new(unprotect(&fs::read(path).map_err(err)?)?);
@@ -23,6 +25,10 @@ pub fn load(path: &Path) -> Result<SigningKey, String> {
     Ok(SigningKey::from_bytes(&seed))
 }
 pub fn store(path: &Path, key: &SigningKey) -> Result<(), String> {
+    let _guard = IDENTITY_LOCK.lock().map_err(|_| "Identity lock failed")?;
+    write_identity(path, key)
+}
+fn write_identity(path: &Path, key: &SigningKey) -> Result<(), String> {
     let protected = protect(&key.to_bytes())?;
     let temp = path.with_extension("tmp");
     fs::write(&temp, protected).map_err(err)?;

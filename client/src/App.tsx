@@ -1,5 +1,12 @@
-import { useState, type ReactNode } from "react";
-import { connect, disconnect, request, report } from "./control";
+import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  connect,
+  disconnect,
+  request,
+  report,
+  changeNickname,
+} from "./control";
 import { useStore } from "./store";
 import { toggleMute, toggleDeafen, setVolume, localVolumes } from "./voice";
 import type { Channel, User } from "./types";
@@ -8,6 +15,9 @@ import { Updater } from "./Updater";
 import { Admin, ChannelEditor } from "./Admin";
 export function App() {
   const s = useStore();
+  useEffect(() => {
+    void invoke("identity_public").catch(report);
+  }, []);
   const [address, setAddress] = useState(s.history[0] ?? "127.0.0.1:64738"),
     [nickname, setNickname] = useState(localStorage.getItem("nickname") ?? ""),
     [settings, showSettings] = useState(false),
@@ -76,8 +86,14 @@ export function App() {
         className={"user " + (s.talking.includes(u.id) ? "speaking" : "")}
         draggable={
           u.id === s.self_id
-            ? !!(s.channel_permissions[u.channel_id]?.["channel.move_self"] ?? s.permissions["channel.move_self"])
-            : !!(s.channel_permissions[u.channel_id]?.["channel.move_others"] ?? s.permissions["channel.move_others"])
+            ? !!(
+                s.channel_permissions[u.channel_id]?.["channel.move_self"] ??
+                s.permissions["channel.move_self"]
+              )
+            : !!(
+                s.channel_permissions[u.channel_id]?.["channel.move_others"] ??
+                s.permissions["channel.move_others"]
+              )
         }
         onDragStart={(e) => e.dataTransfer.setData("text/plain", u.id)}
         onContextMenu={(e) => {
@@ -391,6 +407,22 @@ export function App() {
           {menu.user && (
             <>
               <strong>{menu.user.nickname}</strong>
+              {menu.user.id === s.self_id && (
+                <button
+                  onClick={() => {
+                    const value = prompt(
+                      "Votre pseudonyme",
+                      menu.user!.nickname,
+                    );
+                    if (value)
+                      void changeNickname(value)
+                        .then(() => setNickname(value))
+                        .catch(report);
+                  }}
+                >
+                  Changer mon pseudo
+                </button>
+              )}
               {s.channel_permissions[menu.user.channel_id]?.["user.kick"] ||
               s.permissions["user.kick"] ? (
                 <button
