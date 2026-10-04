@@ -174,8 +174,18 @@ Aucun Markdown, upload, webcam, audio système, YouTube, navigateur ou tableau b
 Les builds officiels sont distribués via [la release 0.2.2](https://github.com/Mamaad/Licra-voice/releases/tag/v0.2.2)
 et l’updater signé existant. Le client peut se connecter à un ancien serveur ;
 les nouvelles fonctions nécessitent le serveur 0.2.2. Aucun port supplémentaire.
-La migration et le redémarrage du serveur de production doivent être autorisés
-avant installation ; les tests ci-dessus utilisent un serveur isolé.
+Le serveur de production a été installé le 4 octobre 2026 après autorisation
+explicite, avec sauvegarde préalable. Version 0.2.2, deux clients reconnectés,
+services contrôle/LiveKit actifs, deux migrations et intégrité SQLite vérifiées.
+Les identités, salons, rôles, anciennes règles, bans et overrides ont été
+comparés à la sauvegarde et sont conservés.
+
+Validation officielle : [CI du commit tagué](https://github.com/Mamaad/Licra-voice/actions/runs/37231904581)
+et [builds signés/publication](https://github.com/Mamaad/Licra-voice/actions/runs/37232004635),
+tous deux réussis. Le setup NSIS a passé la vérification de signature et
+l’installation/mise à jour sur disque secondaire avec conservation AppData.
+Le setup téléchargé depuis la release publique a été vérifié indépendamment :
+signature correcte, artefact modifié refusé ; manifeste updater 0.2.2 cohérent.
 
 ## Fichiers modifiés/ajoutés
 
