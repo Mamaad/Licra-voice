@@ -31,6 +31,22 @@ Vérifications locales effectuées :
   microphones synthétiques ; vérifie Opus, rooms distinctes, déplacement admin
   et refus d’un ancien credential média. Ce test passe ; voir `benchmarks/media-local.json`.
 
+Refonte CORE 0.1.2 :
+
+- `npm run test:ui` à la racine lance un serveur et LiveKit isolés sur les ports
+  27438–27441, puis le vrai client React/control/audio dans Chromium. Seule
+  l’API native Tauri est remplacée pour signer l’identité avec WebCrypto.
+- Connexion signée, favoris, création de salons, rôles et décisions de permissions,
+  volume individuel/général, seuil micro et visibilité des commandes pour un invité.
+- Signal PCM réel pour vérifier le niveau micro et l’indicateur vocal.
+- Mise à jour : bouton et état « à jour » vérifiés avec l’API native de test ;
+  le téléchargement/installateur signé reste vérifié séparément dans la CI Windows.
+- Dimensions 1000, 1100, 1440, 1920 et 3840 px : barre audio accessible,
+  absence de débordement horizontal et fenêtres de paramètres dans le viewport.
+- Captures dans `docs/screenshots/core/`. Les données viennent du serveur isolé ;
+  aucun faux état ou périphérique n’est inclus dans le bundle de production.
+- Aucun mode Ultra Low Latency ; profils Opus existants et diagnostics réels.
+
 À valider avant le statut « utilisable quotidiennement » :
 
 1. Installer le bundle Linux sous un utilisateur d’une Ubuntu 24.04 fraîche,

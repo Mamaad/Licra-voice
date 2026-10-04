@@ -1,1 +1,17 @@
-{"identifier":"main","windows":["main"],"permissions":["core:default","global-shortcut:allow-register","global-shortcut:allow-unregister-all","updater:default","process:allow-restart"]}
+{
+  "identifier": "main",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister-all",
+    "updater:default",
+    "process:allow-restart",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging"
+  ]
+}

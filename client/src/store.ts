@@ -25,6 +25,7 @@ export interface Favorite {
 }
 interface State extends Snapshot {
   status: string;
+  serverVersion: string;
   error: string;
   address: string;
   selected: string;
@@ -32,6 +33,10 @@ interface State extends Snapshot {
   deafened: boolean;
   talking: string[];
   microphoneLevel: number;
+  masterVolume: number;
+  connectionRTT: number | null;
+  recentServers: Record<string, { name: string; nickname: string }>;
+
   settings: Settings;
   history: string[];
   favorites: Favorite[];
@@ -49,6 +54,7 @@ export const useStore = create<State>((set, get) => ({
   permissions: {},
   channel_permissions: {},
   status: "disconnected",
+  serverVersion: "",
   error: "",
   address: "",
   selected: "",
@@ -56,6 +62,9 @@ export const useStore = create<State>((set, get) => ({
   deafened: false,
   talking: [],
   microphoneLevel: 0,
+  masterVolume: saved("masterVolume", 100),
+  connectionRTT: null,
+  recentServers: saved("recentServers", {}),
   settings: { ...initialSettings, ...saved("settings", {}) },
   history: saved("history", []),
   favorites: saved("favorites", []),
@@ -72,7 +81,10 @@ export function applyEvent(type: string, p: any) {
   const s = useStore.getState();
   switch (type) {
     case "SNAPSHOT":
-      s.set({ ...p, status: "connected", error: "" });
+      const selected = p.channels.some((c: any) => c.id === s.selected)
+        ? s.selected
+        : (p.channels[0]?.id ?? "");
+      s.set({ ...p, selected, status: "connected", error: "" });
       break;
     case "USER_CONNECTED":
     case "USER_UPDATED":

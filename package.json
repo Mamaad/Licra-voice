@@ -5,6 +5,7 @@
   "name": "licra",
   "private": true,
   "scripts": {
-    "test:media": "node tools/media-check/run.mjs"
+    "test:media": "node tools/media-check/run.mjs",
+    "test:ui": "node tools/ui-check/run.mjs"
   }
 }

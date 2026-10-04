@@ -1,0 +1,21 @@
+<!doctype html><html lang="fr"><head><meta charset="UTF-8"><title>Licra UI verification</title></head><body><div id="root"></div><script type="module">
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {App} from '/src/App.tsx';
+import {useStore} from '/src/store.ts';
+import * as control from '/src/control.ts';
+import '/src/style.css';
+// Test-only replacement for native Ed25519/IPC; UI, control and audio remain production modules.
+const keys=await crypto.subtle.generateKey({name:'Ed25519'},true,['sign','verify']);
+const base64=buffer=>btoa(String.fromCharCode(...new Uint8Array(buffer)));
+const publicKey=base64(await crypto.subtle.exportKey('raw',keys.publicKey));
+window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback:()=>0,invoke:async(cmd,args)=>{
+ if(cmd==='identity_public')return publicKey;
+ if(cmd==='identity_sign')return base64(await crypto.subtle.sign('Ed25519',keys.privateKey,new TextEncoder().encode(args.context)));
+ if(cmd==='plugin:updater|check')return null;
+ if(cmd.startsWith('plugin:global-shortcut|')||cmd.startsWith('plugin:window|'))return;
+ throw new Error('Unexpected native operation in UI verification: '+cmd);
+}};
+window.ui={store:useStore,control};
+createRoot(document.getElementById('root')).render(React.createElement(App));
+</script></body></html>

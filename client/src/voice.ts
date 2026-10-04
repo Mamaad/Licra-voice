@@ -288,7 +288,7 @@ export function localVolumes() {
         pub.track.setVolume(
           s.deafened || s.localMuted[user?.fingerprint ?? ""]
             ? 0
-            : volume / 100,
+            : ((volume / 100) * s.masterVolume) / 100,
         );
     }
     a.muted = true;
@@ -419,4 +419,61 @@ export async function devices() {
   return (await navigator.mediaDevices.enumerateDevices()).filter(
     (d) => d.kind !== "videoinput",
   );
+}
+
+export function setMasterVolume(value: number) {
+  useStore.getState().set({ masterVolume: value });
+  localStorage.setItem("masterVolume", String(value));
+  localVolumes();
+}
+export async function voiceDiagnostics() {
+  if (!room) return { connected: false };
+  const result: Record<string, unknown> = {
+    connected: true,
+    remoteParticipants: room.remoteParticipants.size,
+  };
+  let received = 0,
+    lost = 0,
+    jitter = 0,
+    codec = "",
+    transport = "",
+    rtt = 0;
+  for (const participant of room.remoteParticipants.values())
+    for (const publication of participant.audioTrackPublications.values()) {
+      const stats = await publication.track?.getRTCStatsReport();
+      if (!stats) continue;
+      stats.forEach((item: any) => {
+        if (
+          item.type === "inbound-rtp" &&
+          (item.kind === "audio" || item.mediaType === "audio")
+        ) {
+          received += item.packetsReceived ?? 0;
+          lost += Math.max(0, item.packetsLost ?? 0);
+          jitter = Math.max(jitter, item.jitter ?? 0);
+        }
+        if (
+          item.type === "codec" &&
+          item.mimeType?.toLowerCase().includes("opus")
+        )
+          codec = item.mimeType;
+        if (
+          item.type === "candidate-pair" &&
+          item.state === "succeeded" &&
+          (item.nominated || item.selected)
+        ) {
+          rtt = item.currentRoundTripTime ?? 0;
+          const local = stats.get(item.localCandidateId);
+          transport = local?.protocol ?? "";
+        }
+      });
+    }
+  return {
+    ...result,
+    codec: codec || null,
+    transport: transport || null,
+    rtt_ms: rtt ? Math.round(rtt * 1000) : null,
+    jitter_ms: received ? +(jitter * 1000).toFixed(2) : null,
+    packet_loss_percent:
+      received + lost ? +((lost / (received + lost)) * 100).toFixed(2) : null,
+  };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { Modal } from "./Modal";
@@ -10,11 +10,12 @@ export function Updater() {
     [checking, setChecking] = useState(false),
     [progress, setProgress] = useState<number | null>(0),
     [busy, setBusy] = useState(false);
+  const installing = useRef(false);
   useEffect(() => {
     let alive = true,
       looking = false;
     async function look(event?: Event) {
-      if (looking) {
+      if (looking || installing.current) {
         if (event) show(true);
         return;
       }
@@ -60,6 +61,7 @@ export function Updater() {
   }, []);
   async function install() {
     if (!update || busy) return;
+    installing.current = true;
     setBusy(true);
     setMessage("Téléchargement et vérification de la signature…");
     let downloaded = 0,
@@ -82,6 +84,7 @@ export function Updater() {
       await relaunch();
     } catch (e) {
       setMessage("Mise à jour impossible : " + String(e));
+      installing.current = false;
       setBusy(false);
     }
   }

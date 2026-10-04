@@ -18,6 +18,7 @@ const pending = new Map<
     resolve: (p: any) => void;
     reject: (e: Error) => void;
     timer: ReturnType<typeof setTimeout>;
+    started: number;
   }
 >();
 const actions: Record<string, string> = {
@@ -36,6 +37,9 @@ const actions: Record<string, string> = {
 };
 const codes: Record<string, string> = {
   PERMISSION_DENIED: "Permission refusée",
+  INVALID_INPUT: "Saisie invalide",
+  PROTECTED_ROLE: "Ce rôle est protégé",
+  LOGS_UNAVAILABLE: "Journal du serveur indisponible",
   AUTH_FAILED: "Signature d’identité invalide",
   INVALID_ADMIN_TOKEN: "Token administrateur invalide",
   CHANNEL_FULL: "Salon complet",
@@ -73,7 +77,13 @@ export function request(type: string, payload: unknown = {}): Promise<any> {
       pending.delete(id);
       reject(new Error("La requête a expiré"));
     }, 10000);
-    pending.set(id, { type, resolve, reject, timer: timeout });
+    pending.set(id, {
+      type,
+      resolve,
+      reject,
+      timer: timeout,
+      started: performance.now(),
+    });
     try {
       transmit(type, payload, id);
     } catch (e) {
@@ -96,7 +106,12 @@ async function open(address: string, nickname: string) {
   const target = parseAddress(address);
   base = target.ws;
   const publicKey = await invoke<string>("identity_public");
-  useStore.getState().set({ status: "connecting", address, error: "" });
+  useStore.getState().set({
+    status: retries ? "reconnecting" : "connecting",
+    address,
+    error: "",
+    connectionRTT: null,
+  });
   return new Promise<void>((resolve, reject) => {
     const ws = new WebSocket(base + "/ws");
     socket = ws;
@@ -122,6 +137,7 @@ async function open(address: string, nickname: string) {
         const m = JSON.parse(e.data) as Envelope;
         const p = m.payload as any;
         if (m.type === "SERVER_HELLO") {
+          useStore.getState().set({ serverVersion: p.server_version });
           const context = [
             "licra:v1",
             p.server_id,
@@ -134,6 +150,18 @@ async function open(address: string, nickname: string) {
             throw new Error("Challenge serveur invalide");
           const signature = await invoke<string>("identity_sign", { context });
           if (ws === socket) transmit("AUTHENTICATE", { signature });
+          return;
+        }
+        if (m.type === "PONG" && m.request_id) {
+          const task = pending.get(m.request_id);
+          if (task) {
+            clearTimeout(task.timer);
+            pending.delete(m.request_id);
+            useStore.getState().set({
+              connectionRTT: Math.round(performance.now() - task.started),
+            });
+            task.resolve(p);
+          }
           return;
         }
         if (m.type === "PING") {
@@ -180,6 +208,10 @@ async function open(address: string, nickname: string) {
           if (task) {
             clearTimeout(task.timer);
             pending.delete(m.request_id);
+            if (task.type === "PING")
+              useStore.getState().set({
+                connectionRTT: Math.round(performance.now() - task.started),
+              });
             task.resolve(p);
           }
         }
@@ -195,6 +227,13 @@ async function open(address: string, nickname: string) {
           clearTimeout(timeout);
           retries = 0;
           remember(address);
+          const recentServers = {
+            ...useStore.getState().recentServers,
+            [address]: { name: p.server.name, nickname },
+          };
+          localStorage.setItem("recentServers", JSON.stringify(recentServers));
+          useStore.getState().set({ recentServers });
+          void request("PING").catch(() => {});
           resolve();
         }
         if (m.type === "VOICE_JOIN")
@@ -226,9 +265,15 @@ async function open(address: string, nickname: string) {
         .set({ status: "disconnected", users: [], self_id: "", talking: [] });
       if (!authenticated) reject(new Error("Connexion fermée"));
       if (intent && last) {
+        useStore
+          .getState()
+          .set({ status: "reconnecting", connectionRTT: null });
         const delay = Math.min(30000, 1000 * 2 ** retries++);
         timer = setTimeout(() => {
-          if (last) void open(last.address, last.nickname).catch(report);
+          if (last) {
+            useStore.getState().set({ status: "reconnecting" });
+            void open(last.address, last.nickname).catch(report);
+          }
         }, delay);
       }
     };
@@ -248,6 +293,7 @@ export function disconnect() {
   pending.clear();
   useStore.getState().set({
     status: "disconnected",
+    connectionRTT: null,
     users: [],
     self_id: "",
     permissions: {},

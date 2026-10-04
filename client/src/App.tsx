@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState, type ReactNode } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useEffect, useState, type MouseEvent } from "react";
 import {
   connect,
   disconnect,
@@ -7,129 +8,127 @@ import {
   report,
   changeNickname,
 } from "./control";
-import { useStore } from "./store";
-import { toggleMute, toggleDeafen, setVolume, localVolumes } from "./voice";
+import { useStore, type Favorite } from "./store";
+import { setVolume, localVolumes } from "./voice";
 import type { Channel, User } from "./types";
 import { Settings } from "./Settings";
 import { Updater } from "./Updater";
 import { Admin, ChannelEditor } from "./Admin";
+import { Modal, ActionDialog, promptDialog, confirmDialog } from "./Modal";
+import { Icon, IconButton, Avatar, StatusDot, connectionLabels } from "./ui";
+import { ServerSidebar, ChannelTree, BottomAudioBar, UserRow } from "./Shell";
+import { ContextMenu } from "./ContextMenu";
+import { CLIENT_VERSION } from "./version";
 export function App() {
   const s = useStore();
-  useEffect(() => {
-    void invoke("identity_public").catch(report);
-  }, []);
-  const [address, setAddress] = useState(s.history[0] ?? "127.0.0.1:64738"),
+  const [address, setAddress] = useState(s.history[0] ?? ""),
     [nickname, setNickname] = useState(localStorage.getItem("nickname") ?? ""),
+    [view, setView] = useState("connection"),
     [settings, showSettings] = useState(false),
+    [admin, showAdmin] = useState(false),
+    [search, setSearch] = useState(""),
+    [sort, setSort] = useState("name");
+  const [editor, setEditor] = useState<{
+      channel?: Channel;
+      parent?: string;
+    } | null>(null),
     [menu, setMenu] = useState<{
       x: number;
       y: number;
       user?: User;
       channel?: Channel;
-    } | null>(null);
-  const [admin, showAdmin] = useState(false),
-    [editor, setEditor] = useState<{
-      channel?: Channel;
-      parent?: string;
-    } | null>(null);
-  const selected = s.channels.find((c) => c.id === s.selected),
-    self = s.users.find((u) => u.id === s.self_id);
-  const permissions =
-    s.channel_permissions[selected?.id ?? ""] ?? s.permissions;
-  function join(c: Channel) {
-    if (
-      !s.channel_permissions[c.id]?.["channel.join"] ||
-      !s.channel_permissions[c.id]?.["channel.move_self"]
-    ) {
+    } | null>(null),
+    [profile, setProfile] = useState<User | null>(null);
+  useEffect(() => {
+    void invoke("identity_public").catch(report);
+  }, []);
+  useEffect(() => {
+    if (s.status === "connected") setView("channels");
+  }, [s.status]);
+  const self = s.users.find((u) => u.id === s.self_id),
+    selected = s.channels.find((c) => c.id === s.selected),
+    permissions = s.channel_permissions[selected?.id ?? ""] ?? s.permissions;
+  const members = s.users
+    .filter((u) => u.channel_id === selected?.id)
+    .filter((u) => u.nickname.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) =>
+      sort === "voice"
+        ? Number(s.talking.includes(b.id)) - Number(s.talking.includes(a.id)) ||
+          a.nickname.localeCompare(b.nickname)
+        : a.nickname.localeCompare(b.nickname),
+    );
+  const profiles = {
+    eco: "Économique",
+    standard: "Standard",
+    high: "Haute qualité",
+  };
+  async function join(c: Channel) {
+    const allowed = s.channel_permissions[c.id] ?? {};
+    if (!allowed["channel.join"] || !allowed["channel.move_self"]) {
       report(
         new Error(
-          "Rejoindre le salon : vous n’avez pas la permission de rejoindre ou de vous déplacer dans ce salon.",
+          "Vous ne pouvez pas rejoindre ce salon avec vos permissions actuelles.",
         ),
       );
       return;
     }
-    const password = c.has_password
-      ? (prompt("Mot de passe du salon") ?? "")
-      : "";
-    void request("JOIN_CHANNEL", { channel_id: c.id, password }).catch(report);
+    const password =
+      c.has_password && !allowed["channel.join_password_bypass"]
+        ? await promptDialog("Mot de passe du salon", "", true)
+        : "";
+    if (password === null) return;
+    await request("JOIN_CHANNEL", { channel_id: c.id, password }).catch(report);
+    setMenu(null);
   }
-  function tree(parent: string | null, depth = 0): ReactNode {
-    if (depth > 64) return null;
-    return s.channels
-      .filter((c) => c.parent_id === parent)
-      .sort(
-        (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name),
-      )
-      .map((c) => (
-        <div key={c.id} className="branch">
-          <button
-            className={"channel " + (c.id === s.selected ? "selected" : "")}
-            onClick={() => s.set({ selected: c.id })}
-            onDoubleClick={() => join(c)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setMenu({ x: e.clientX, y: e.clientY, channel: c });
-            }}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              const id = e.dataTransfer.getData("text/plain");
-              if (id === s.self_id) join(c);
-              else if (
-                s.channel_permissions[c.id]?.["channel.move_others"] &&
-                (s.channel_permissions[
-                  s.users.find((u) => u.id === id)?.channel_id ?? ""
-                ] ?? s.permissions)["channel.move_others"]
-              )
-                void request("MOVE_USER", {
-                  channel_id: c.id,
-                  user_id: id,
-                }).catch(report);
-            }}
-          >
-            ▾ 🔊 {c.name}
-            {c.has_password ? " 🔒" : ""}
-          </button>
-          {s.users.filter((u) => u.channel_id === c.id).map(user)}
-          {tree(c.id, depth + 1)}
-        </div>
-      ));
+  function move(id: string, c: Channel) {
+    if (id === s.self_id) {
+      void join(c);
+      return;
+    }
+    const u = s.users.find((u) => u.id === id);
+    if (!u) return;
+    const source = s.channel_permissions[u.channel_id] ?? s.permissions;
+    if (
+      !source["channel.move_others"] ||
+      !s.channel_permissions[c.id]?.["channel.move_others"]
+    ) {
+      report(
+        new Error(
+          "Déplacement refusé : permission requise dans le salon de départ et d’arrivée.",
+        ),
+      );
+      return;
+    }
+    void request("MOVE_USER", { user_id: id, channel_id: c.id })
+      .then(() => setMenu(null))
+      .catch(report);
   }
-  function user(u: User) {
-    return (
-      <button
-        key={u.id}
-        className={"user " + (s.talking.includes(u.id) ? "speaking" : "")}
-        draggable={
-          u.id === s.self_id
-            ? !!(
-                s.channel_permissions[u.channel_id]?.["channel.move_self"] ??
-                s.permissions["channel.move_self"]
-              )
-            : !!(
-                s.channel_permissions[u.channel_id]?.["channel.move_others"] ??
-                s.permissions["channel.move_others"]
-              )
-        }
-        onDragStart={(e) => e.dataTransfer.setData("text/plain", u.id)}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setMenu({ x: e.clientX, y: e.clientY, user: u });
-        }}
-      >
-        {u.server_muted || u.muted
-          ? "🔇"
-          : s.talking.includes(u.id)
-            ? "🎙"
-            : "●"}{" "}
-        {u.nickname}
-        {u.id === s.self_id ? " (vous)" : ""}
-        {u.deafened ? " 🎧" : ""}
-      </button>
+  function context(e: MouseEvent, value: User | Channel) {
+    e.preventDefault();
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      ...("fingerprint" in value ? { user: value } : { channel: value }),
+    });
+  }
+  function choose(f: Favorite) {
+    setAddress(f.address);
+    setNickname(f.nickname || nickname);
+    setView(
+      s.address === f.address && s.status === "connected"
+        ? "channels"
+        : "connection",
     );
   }
-  function favorite() {
-    const name = prompt("Nom du favori");
+  async function addFavorite() {
+    if (!address.trim()) {
+      report(new Error("Renseignez d’abord l’adresse du serveur."));
+      return;
+    }
+    const name = await promptDialog(
+      "Nom du serveur favori",
+      s.address === address ? s.server.name : address,
+    );
     if (!name) return;
     const favorites = [
       ...s.favorites.filter((f) => f.address !== address),
@@ -138,291 +137,629 @@ export function App() {
     localStorage.setItem("favorites", JSON.stringify(favorites));
     s.set({ favorites });
   }
+  function connection(target = address, name = nickname) {
+    localStorage.setItem("nickname", name);
+    void connect(target, name).catch((e) => {
+      report(e);
+      s.set({ status: "failed" });
+    });
+  }
+  async function moderation(u: User, ban = false) {
+    const reason = await promptDialog(
+      ban
+        ? `Motif du ban de ${u.nickname}`
+        : `Motif de l’expulsion de ${u.nickname}`,
+    );
+    if (reason === null) return;
+    if (!ban) {
+      if (await confirmDialog(`Expulser ${u.nickname} du serveur ?`))
+        await request("KICK_USER", { user_id: u.id, reason }).catch(report);
+    } else {
+      const minutes = await promptDialog(
+        "Durée en minutes — vide pour un ban permanent",
+      );
+      if (minutes === null) return;
+      const n = Number(minutes);
+      if (minutes && (!Number.isFinite(n) || n <= 0)) {
+        report(new Error("Durée invalide"));
+        return;
+      }
+      if (
+        await confirmDialog(
+          `Bannir ${u.nickname} ${minutes ? `pendant ${n} minutes` : "définitivement"} ?`,
+        )
+      )
+        await request("BAN_USER", {
+          user_id: u.id,
+          reason,
+          expires_at: minutes
+            ? new Date(Date.now() + n * 60000).toISOString()
+            : null,
+        }).catch(report);
+    }
+    setMenu(null);
+  }
+  const recent = [
+    ...new Set([...s.history, ...s.favorites.map((f) => f.address)]),
+  ];
+  const menuPermissions = menu?.user
+    ? (s.channel_permissions[menu.user.channel_id] ?? s.permissions)
+    : menu?.channel
+      ? (s.channel_permissions[menu.channel.id] ?? {})
+      : {};
+  const native = "__TAURI_INTERNALS__" in window;
   return (
-    <main onClick={() => menu && setMenu(null)}>
-      <header>
-        <strong>LICRA</strong>
-        <span>{s.server.name}</span>
-        <button disabled={s.status !== "connected"} onClick={disconnect}>
-          Déconnecter
-        </button>
-        <button
-          onClick={() => void toggleMute().catch(report)}
-          aria-pressed={s.muted}
-        >
-          {s.muted ? "🔇 Micro coupé" : "🎙 Micro"}
-        </button>
-        <button
-          onClick={() => void toggleDeafen().catch(report)}
-          aria-pressed={s.deafened}
-        >
-          🎧 {s.deafened ? "Son coupé" : "Écouter"}
-        </button>
-        <button onClick={() => showSettings(true)}>Paramètres</button>
-        <button
-          onClick={() => window.dispatchEvent(new Event("licra:check-update"))}
-        >
-          Mettre à jour
-        </button>
-        {s.status === "connected" && s.permissions["role.view"] && (
-          <button onClick={() => showAdmin(true)}>Administration</button>
-        )}
+    <main
+      className={`app-shell ${s.status === "connected" && view === "channels" ? "in-server" : ""}`}
+    >
+      <ServerSidebar
+        view={view}
+        setView={setView}
+        onSettings={() => showSettings(true)}
+        onChoose={choose}
+        onAdd={() => {
+          setView("connection");
+          setAddress("");
+        }}
+      />
+      <header className="topbar" data-tauri-drag-region>
+        <div className="topbar-server">
+          <span className="server-symbol">
+            <Icon name="users" />
+          </span>
+          <strong>
+            {s.status === "connected" ? s.server.name : "Licra Voice"}
+          </strong>
+          {s.status === "connected" && (
+            <span className="online-count">
+              <StatusDot status="connected" />
+              {s.users.length} en ligne
+            </span>
+          )}
+        </div>
+        <div className="topbar-actions">
+          {s.status === "connected" && (
+            <>
+              <label className="header-search">
+                <Icon name="search" />
+                <input
+                  aria-label="Rechercher un membre"
+                  placeholder="Rechercher un membre…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </label>
+              {s.permissions["role.view"] && (
+                <IconButton
+                  icon="shield"
+                  label="Paramètres du serveur"
+                  onClick={() => showAdmin(true)}
+                />
+              )}
+              <IconButton
+                icon="logout"
+                label="Déconnecter du serveur"
+                onClick={async () => {
+                  if (
+                    await confirmDialog(
+                      "Quitter ce serveur et la conversation vocale ?",
+                    )
+                  ) {
+                    disconnect();
+                    setView("connection");
+                  }
+                }}
+              />
+            </>
+          )}
+          <IconButton
+            icon="download"
+            label="Mettre à jour Licra"
+            onClick={() =>
+              window.dispatchEvent(new Event("licra:check-update"))
+            }
+          />
+          {native && (
+            <div className="window-controls">
+              <button
+                aria-label="Réduire"
+                onClick={() => void getCurrentWindow().minimize().catch(report)}
+              >
+                —
+              </button>
+              <button
+                aria-label="Agrandir ou restaurer"
+                onClick={() =>
+                  void getCurrentWindow().toggleMaximize().catch(report)
+                }
+              >
+                <svg width="12" height="12">
+                  <rect
+                    x="1"
+                    y="1"
+                    width="10"
+                    height="10"
+                    fill="none"
+                    stroke="currentColor"
+                  />
+                </svg>
+              </button>
+              <IconButton
+                icon="close"
+                label="Fermer Licra"
+                onClick={() => void getCurrentWindow().close().catch(report)}
+              />
+            </div>
+          )}
+        </div>
       </header>
       {s.error && (
-        <div role="alert" className="error">
-          {s.error}
-          <button onClick={() => s.set({ error: "" })}>Fermer</button>
+        <div className="error-banner" role="alert">
+          <Icon name="info" />
+          <span>{s.error}</span>
+          <IconButton
+            icon="close"
+            label="Fermer le message"
+            onClick={() => s.set({ error: "" })}
+          />
         </div>
       )}
-      <div className="layout">
-        <aside>
-          {s.status === "connected" ? (
-            <>
-              <h2>{s.server.name}</h2>
-              {s.permissions["channel.create"] && (
-                <button onClick={() => setEditor({})}>＋ Salon</button>
-              )}
-              {tree(null)}
-              <section>
-                <h3>Hors salon</h3>
-                {s.users.filter((u) => !u.channel_id).map(user)}
-              </section>
-            </>
-          ) : (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                localStorage.setItem("nickname", nickname);
-                void connect(address, nickname).catch(report);
-              }}
-            >
-              <h2>Se connecter</h2>
-              <label>
-                Adresse serveur
-                <input
-                  required
-                  list="history"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="1.2.3.4:64738"
-                />
-              </label>
-              <datalist id="history">
-                {s.history.map((h) => (
-                  <option key={h} value={h} />
-                ))}
-              </datalist>
-              <label>
-                Pseudonyme
-                <input
-                  required
-                  maxLength={32}
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
-                />
-              </label>
-              <button disabled={s.status === "connecting"}>
-                {s.status === "connecting" ? "Connexion…" : "Connecter"}
-              </button>
-              <button type="button" onClick={favorite}>
-                ☆ Favori
-              </button>
-              <h3>Favoris</h3>
-              {s.favorites.map((f) => (
-                <div key={f.address}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAddress(f.address);
-                      setNickname(f.nickname);
-                    }}
-                  >
-                    {f.name}
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={"Supprimer " + f.name}
-                    onClick={() => {
-                      const favorites = s.favorites.filter(
-                        (x) => x.address !== f.address,
-                      );
-                      localStorage.setItem(
-                        "favorites",
-                        JSON.stringify(favorites),
-                      );
-                      s.set({ favorites });
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </form>
-          )}
-        </aside>
-        <article>
-          {selected ? (
-            <>
-              <p className="eyebrow">SALON VOCAL</p>
-              <h1>{selected.name}</h1>
-              <p>
-                {selected.description ||
-                  "Double-cliquez sur un salon pour rejoindre la conversation."}
-              </p>
-              <p>
-                Opus · 48 kHz · Mono · {selected.audio_profile} ·{" "}
-                {s.users.filter((u) => u.channel_id === selected.id).length}{" "}
-                participants
-              </p>
-              <button
-                disabled={!permissions["channel.join"]}
-                onClick={() => join(selected)}
-              >
-                Rejoindre
-              </button>
-              {self?.channel_id && (
-                <button
-                  onClick={() => void request("LEAVE_CHANNEL").catch(report)}
-                >
-                  Quitter le vocal
-                </button>
-              )}
-              <div className="cards">
-                {s.users
-                  .filter((u) => u.channel_id === selected.id)
-                  .map((u) => (
-                    <section
-                      key={u.id}
-                      className={s.talking.includes(u.id) ? "speaking" : ""}
-                    >
-                      <h3>{u.nickname}</h3>
-                      <p>
-                        {u.server_muted
-                          ? "Micro interdit"
-                          : u.muted
-                            ? "Micro coupé"
-                            : s.talking.includes(u.id)
-                              ? "Parle"
-                              : "En écoute"}
-                      </p>
-                      {u.id !== s.self_id && (
-                        <>
-                          <label>
-                            Volume local {s.volumes[u.fingerprint] ?? 100}%
-                            <input
-                              type="range"
-                              min="0"
-                              max="200"
-                              value={s.volumes[u.fingerprint] ?? 100}
-                              onChange={(e) =>
-                                setVolume(u.fingerprint, Number(e.target.value))
-                              }
-                            />
-                          </label>
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={!!s.localMuted[u.fingerprint]}
-                              onChange={(e) => {
-                                s.set({
-                                  localMuted: {
-                                    ...s.localMuted,
-                                    [u.fingerprint]: e.target.checked,
-                                  },
-                                });
-                                localVolumes();
-                              }}
-                            />
-                            Couper localement
-                          </label>
-                        </>
+      <section className="workspace">
+        {s.status === "connected" && view === "channels" ? (
+          <>
+            <ChannelTree
+              onJoin={(c) => void join(c)}
+              onContext={context}
+              onUserContext={context}
+              onMove={move}
+              onCreate={(parent) => setEditor({ parent })}
+            />
+            <article className="channel-content">
+              {selected ? (
+                <>
+                  <div className="channel-banner">
+                    <div className="channel-banner-actions">
+                      {permissions["channel.edit"] && (
+                        <button
+                          onClick={() => setEditor({ channel: selected })}
+                        >
+                          <Icon name="edit" />
+                          Modifier le salon
+                        </button>
                       )}
+                    </div>
+                    <div className="channel-title">
+                      <Icon name="channel" />
+                      <h1>{selected.name}</h1>
+                      {selected.has_password && <Icon name="lock" />}
+                    </div>
+                    <p>
+                      {s.channels.find((c) => c.id === selected.parent_id)
+                        ?.name ?? s.server.name}
+                    </p>
+                  </div>
+                  <div className="channel-details">
+                    <section className="description-panel">
+                      <p>
+                        {selected.description ||
+                          "Un espace pour discuter. Rejoignez le salon pour commencer la conversation."}
+                      </p>
+                      <div className="channel-actions">
+                        <button
+                          className="primary"
+                          disabled={
+                            !permissions["channel.join"] ||
+                            !permissions["channel.move_self"] ||
+                            self?.channel_id === selected.id
+                          }
+                          onClick={() => void join(selected)}
+                        >
+                          <Icon name="connect" />
+                          {self?.channel_id === selected.id
+                            ? "Vous êtes dans ce salon"
+                            : "Rejoindre le salon"}
+                        </button>
+                        {self?.channel_id && (
+                          <button
+                            onClick={() =>
+                              void request("LEAVE_CHANNEL").catch(report)
+                            }
+                          >
+                            Quitter le vocal
+                          </button>
+                        )}
+                      </div>
                     </section>
-                  ))}
-              </div>
-            </>
-          ) : (
-            <>
-              <p className="eyebrow">VOIX · SANS COMPTE · AUTO-HÉBERGÉ</p>
+                    <div className="channel-stat-strip">
+                      <div>
+                        <Icon name="users" />
+                        <span>
+                          Membres
+                          <strong>
+                            {
+                              s.users.filter(
+                                (u) => u.channel_id === selected.id,
+                              ).length
+                            }
+                            {selected.max_users
+                              ? ` / ${selected.max_users}`
+                              : ""}
+                          </strong>
+                        </span>
+                      </div>
+                      <div>
+                        <Icon name="activity" />
+                        <span>
+                          Profil audio
+                          <strong>{profiles[selected.audio_profile]}</strong>
+                          <small>48 kHz · Opus mono</small>
+                        </span>
+                      </div>
+                      <div>
+                        <Icon name="shield" />
+                        <span>
+                          Conversation<strong>WebRTC chiffré</strong>
+                          <small>Serveur auto-hébergé</small>
+                        </span>
+                      </div>
+                    </div>
+                    <div className="members-heading">
+                      <h2>Membres ({members.length})</h2>
+                      <select
+                        aria-label="Trier les membres"
+                        value={sort}
+                        onChange={(e) => setSort(e.target.value)}
+                      >
+                        <option value="name">Trier : pseudonyme</option>
+                        <option value="voice">Trier : activité vocale</option>
+                      </select>
+                    </div>
+                    <div className="member-list">
+                      {members.map((u) => (
+                        <UserRow
+                          key={u.id}
+                          user={u}
+                          onSelect={() => setProfile(u)}
+                          onContext={context}
+                        />
+                      ))}
+                      {!members.length && (
+                        <div className="empty-state">
+                          <Icon name="users" />
+                          <h3>
+                            {search
+                              ? "Aucun membre trouvé"
+                              : "La conversation commence ici"}
+                          </h3>
+                          <p>
+                            {search
+                              ? "Essayez un autre pseudonyme."
+                              : "Rejoignez le salon ou invitez vos amis avec l’adresse du serveur."}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="empty-state">
+                  <Icon name="channel" />
+                  <h1>Votre serveur vocal</h1>
+                  <p>Sélectionnez un salon dans l’arborescence.</p>
+                </div>
+              )}
+            </article>
+          </>
+        ) : (
+          <article className="connection-page">
+            <div className="connection-hero">
+              <p className="eyebrow">CONNEXION DIRECTE · SANS COMPTE</p>
               <h1>
-                Votre serveur.
-                <br />
-                Votre conversation.
+                {view === "servers" ? "Vos serveurs" : "Connecter à un serveur"}
               </h1>
               <p>
-                Une adresse, un pseudo et une identité qui reste sur votre
-                appareil.
+                Rejoignez votre communauté en quelques secondes.
+                <br />
+                Aucun compte, aucun mot de passe utilisateur.
+                <br />
+                Une connexion directe à votre serveur vocal.
               </p>
-            </>
-          )}
-        </article>
-      </div>
-      <footer>
-        <span className={"dot " + s.status} />
-        {s.status === "connected"
-          ? "Connecté"
-          : s.status === "connecting"
-            ? "Connexion en cours"
-            : "Déconnecté"}{" "}
-        · {s.address}
-        <span>
-          {self?.channel_id
-            ? s.channels.find((c) => c.id === self.channel_id)?.name
-            : "Hors salon"}
-        </span>
-      </footer>
-      {admin && <Admin onClose={() => showAdmin(false)} />}{" "}
-      {editor && <ChannelEditor {...editor} onClose={() => setEditor(null)} />}{" "}
-      {settings && <Settings onClose={() => showSettings(false)} />}{" "}
-      {menu && (
-        <div
-          className="context"
-          style={{
-            left: Math.min(menu.x, innerWidth - 240),
-            top: Math.min(menu.y, innerHeight - 220),
-          }}
-        >
-          {menu.channel && (
-            <>
-              <button
-                disabled={
-                  !s.channel_permissions[menu.channel.id]?.["channel.join"]
-                }
-                onClick={() => join(menu.channel!)}
-              >
-                Rejoindre {menu.channel.name}
-              </button>
-              {s.channel_permissions[menu.channel.id]?.["channel.create"] && (
-                <button onClick={() => setEditor({ parent: menu.channel!.id })}>
-                  Créer un sous-salon
-                </button>
-              )}
-              {s.channel_permissions[menu.channel.id]?.["channel.edit"] && (
-                <button onClick={() => setEditor({ channel: menu.channel })}>
-                  Modifier
-                </button>
-              )}
-              {s.channel_permissions[menu.channel.id]?.["channel.delete"] && (
-                <button
-                  onClick={() => {
-                    if (confirm("Supprimer ce salon ?"))
-                      void request("DELETE_CHANNEL", {
-                        id: menu.channel!.id,
-                      }).catch(report);
+              {view !== "servers" && (
+                <form
+                  className="connection-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    connection();
                   }}
                 >
-                  Supprimer
-                </button>
+                  <label>
+                    Adresse du serveur
+                    <div className="input-with-icon">
+                      <Icon name="connect" />
+                      <input
+                        required
+                        aria-describedby="address-help"
+                        list="server-history"
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        placeholder="voice.example.com:64738"
+                      />
+                      <IconButton
+                        icon="close"
+                        label="Effacer l’adresse"
+                        onClick={() => setAddress("")}
+                      />
+                    </div>
+                    <small id="address-help">
+                      Adresse IP ou nom de domaine, suivi du port.
+                    </small>
+                  </label>
+                  <datalist id="server-history">
+                    {s.history.map((h) => (
+                      <option key={h} value={h} />
+                    ))}
+                  </datalist>
+                  <label>
+                    Pseudo
+                    <div className="input-with-icon">
+                      <Icon name="user" />
+                      <input
+                        required
+                        maxLength={32}
+                        aria-describedby="nickname-help"
+                        value={nickname}
+                        onChange={(e) => setNickname(e.target.value)}
+                        placeholder="Votre pseudonyme"
+                      />
+                      <IconButton
+                        icon="close"
+                        label="Effacer le pseudo"
+                        onClick={() => setNickname("")}
+                      />
+                    </div>
+                    <small id="nickname-help">
+                      Votre pseudo sera visible par les autres utilisateurs sur
+                      le serveur.
+                    </small>
+                  </label>
+                  <button
+                    className="primary connect-button"
+                    disabled={["connecting", "reconnecting"].includes(s.status)}
+                  >
+                    <Icon name="connect" />
+                    {["connecting", "reconnecting"].includes(s.status)
+                      ? connectionLabels[s.status]
+                      : "Connexion"}
+                  </button>
+                  <button
+                    type="button"
+                    className="favorite-current"
+                    onClick={() => void addFavorite()}
+                  >
+                    <Icon name="star" />
+                    Enregistrer dans les favoris
+                  </button>
+                </form>
               )}
-            </>
-          )}
-          {menu.user && (
+            </div>
+            <section className="recent-section">
+              <div className="members-heading">
+                <h2>Serveurs récents</h2>
+                <span className="muted-text">
+                  Connexion sans compte central
+                </span>
+              </div>
+              <div className="server-cards">
+                {recent.map((a) => {
+                  const f = s.favorites.find((f) => f.address === a),
+                    r = s.recentServers[a],
+                    name = f?.name ?? r?.name ?? a,
+                    nick = f?.nickname ?? r?.nickname ?? nickname,
+                    active = s.status === "connected" && s.address === a;
+                  return (
+                    <section className="server-card" key={a}>
+                      <div className="server-card-heading">
+                        <span className="server-symbol">
+                          <Icon name="server" />
+                        </span>
+                        <div>
+                          <h3>{name}</h3>
+                          <small>
+                            {active ? (
+                              <>
+                                <StatusDot status="connected" />
+                                {s.users.length} en ligne
+                              </>
+                            ) : (
+                              "Serveur enregistré"
+                            )}
+                          </small>
+                        </div>
+                        {f && <Icon name="star" className="warning-text" />}
+                      </div>
+                      <p>
+                        <Icon name="server" />
+                        {a}
+                      </p>
+                      <p>
+                        <Icon name="user" />
+                        {nick || "Choisissez un pseudo"}
+                      </p>
+                      <button
+                        onClick={() => {
+                          setAddress(a);
+                          setNickname(nick);
+                          if (nick) connection(a, nick);
+                          else setView("connection");
+                        }}
+                      >
+                        <Icon name="connect" />
+                        Connexion rapide
+                      </button>
+                    </section>
+                  );
+                })}
+                {!recent.length && (
+                  <div className="empty-state">
+                    <Icon name="server" />
+                    <h3>Votre première communauté</h3>
+                    <p>Les serveurs rejoints apparaîtront ici.</p>
+                  </div>
+                )}
+              </div>
+            </section>
+            <small className="connection-version">
+              Licra {CLIENT_VERSION} · Identité Ed25519 conservée sur votre
+              appareil
+            </small>
+          </article>
+        )}
+      </section>
+      <BottomAudioBar onSettings={() => showSettings(true)} />
+      {admin && <Admin onClose={() => showAdmin(false)} />}
+      {editor && <ChannelEditor {...editor} onClose={() => setEditor(null)} />}
+      {settings && <Settings onClose={() => showSettings(false)} />}
+      {profile && (
+        <Modal
+          title="Informations utilisateur"
+          onClose={() => setProfile(null)}
+        >
+          <div className="profile-heading">
+            <Avatar
+              name={profile.nickname}
+              identity={profile.fingerprint}
+              large
+            />
+            <h3>{profile.nickname}</h3>
+            <StatusDot status="connected" />
+          </div>
+          <p>
+            Salon :{" "}
+            {s.channels.find((c) => c.id === profile.channel_id)?.name ??
+              "Hors salon"}
+          </p>
+          <label>
+            Identité cryptographique
+            <code className="fingerprint">{profile.fingerprint}</code>
+          </label>
+          <button
+            onClick={() =>
+              void navigator.clipboard
+                .writeText(profile.fingerprint)
+                .catch(report)
+            }
+          >
+            <Icon name="copy" />
+            Copier l’identité
+          </button>
+        </Modal>
+      )}
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)}>
+          {menu.user ? (
             <>
-              <strong>{menu.user.nickname}</strong>
+              <div className="context-profile">
+                <Avatar
+                  name={menu.user.nickname}
+                  identity={menu.user.fingerprint}
+                />
+                <div>
+                  <strong>{menu.user.nickname}</strong>
+                  <small>
+                    <StatusDot status="connected" />
+                    En ligne
+                  </small>
+                </div>
+              </div>
+              {menu.user.id !== s.self_id && (
+                <>
+                  <label className="context-volume">
+                    <span>
+                      <Icon name="volume" />
+                      Volume local
+                      <output>
+                        {s.volumes[menu.user.fingerprint] ?? 100}%
+                      </output>
+                    </span>
+                    <input
+                      aria-label={`Volume de ${menu.user.nickname}`}
+                      type="range"
+                      min="0"
+                      max="200"
+                      value={s.volumes[menu.user.fingerprint] ?? 100}
+                      onChange={(e) =>
+                        setVolume(
+                          menu.user!.fingerprint,
+                          Number(e.target.value),
+                        )
+                      }
+                    />
+                  </label>
+                  <button
+                    onClick={() => {
+                      const u = menu.user!;
+                      s.set({
+                        localMuted: {
+                          ...s.localMuted,
+                          [u.fingerprint]: !s.localMuted[u.fingerprint],
+                        },
+                      });
+                      localVolumes();
+                    }}
+                  >
+                    <Icon name="micOff" />
+                    {s.localMuted[menu.user.fingerprint]
+                      ? "Réactiver localement"
+                      : "Mute local"}
+                  </button>
+                </>
+              )}
+              <hr />
+              {(menu.user.id === s.self_id
+                ? menuPermissions["channel.move_self"]
+                : menuPermissions["channel.move_others"]) && (
+                <label className="context-move">
+                  <Icon name="move" />
+                  Déplacer vers
+                  <select
+                    aria-label="Salon de destination"
+                    value=""
+                    onChange={(e) => {
+                      const c = s.channels.find((c) => c.id === e.target.value);
+                      if (c) move(menu.user!.id, c);
+                    }}
+                  >
+                    <option value="">Choisir un salon…</option>
+                    {s.channels
+                      .filter(
+                        (c) =>
+                          s.channel_permissions[c.id]?.[
+                            menu.user!.id === s.self_id
+                              ? "channel.move_self"
+                              : "channel.move_others"
+                          ],
+                      )
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
+              <button
+                onClick={() => {
+                  setProfile(menu.user!);
+                  setMenu(null);
+                }}
+              >
+                <Icon name="info" />
+                Informations utilisateur
+              </button>
               {menu.user.id === s.self_id && (
                 <button
-                  onClick={() => {
-                    const value = prompt(
+                  onClick={async () => {
+                    const value = await promptDialog(
                       "Votre pseudonyme",
                       menu.user!.nickname,
                     );
@@ -430,100 +767,158 @@ export function App() {
                       void changeNickname(value)
                         .then(() => setNickname(value))
                         .catch(report);
+                    setMenu(null);
                   }}
                 >
+                  <Icon name="edit" />
                   Changer mon pseudo
                 </button>
               )}
-              {s.channel_permissions[menu.user.channel_id]?.["user.kick"] ||
-              s.permissions["user.kick"] ? (
-                <button
-                  onClick={() =>
-                    void request("KICK_USER", {
-                      user_id: menu.user!.id,
-                      reason: prompt("Motif") ?? "",
-                    }).catch(report)
-                  }
-                >
-                  Expulser
-                </button>
-              ) : null}
-              {s.channel_permissions[menu.user.channel_id]?.["user.ban"] ||
-              s.permissions["user.ban"] ? (
+              {s.permissions["role.assign"] && (
                 <button
                   onClick={() => {
-                    const reason = prompt("Motif du ban");
-                    if (reason === null) return;
-                    const minutes = prompt(
-                      "Durée en minutes (vide = permanent)",
-                    );
-                    if (minutes === null) return;
-                    const n = Number(minutes);
-                    if (minutes && (n <= 0 || !Number.isFinite(n))) {
-                      report(new Error("Durée invalide"));
-                      return;
-                    }
-                    void request("BAN_USER", {
-                      user_id: menu.user!.id,
-                      reason,
-                      expires_at: minutes
-                        ? new Date(Date.now() + n * 60000).toISOString()
-                        : null,
-                    }).catch(report);
+                    showAdmin(true);
+                    setMenu(null);
                   }}
                 >
-                  Bannir
+                  <Icon name="shield" />
+                  Rôles et permissions
                 </button>
-              ) : null}
-              {s.channel_permissions[menu.user.channel_id]?.[
-                "voice.mute_others"
-              ] || s.permissions["voice.mute_others"] ? (
+              )}
+              {menuPermissions["voice.mute_others"] && (
                 <button
                   onClick={() =>
                     void request("MUTE_USER", {
                       user_id: menu.user!.id,
                       muted: !menu.user!.server_muted,
-                    }).catch(report)
+                    })
+                      .then(() => setMenu(null))
+                      .catch(report)
                   }
                 >
+                  <Icon name="micOff" />
                   {menu.user.server_muted
                     ? "Autoriser le micro"
-                    : "Interdire le micro"}
-                </button>
-              ) : null}
-              {s.permissions["user.change_others_nickname"] && (
-                <button
-                  onClick={() => {
-                    const nickname = prompt(
-                      "Nouveau pseudo",
-                      menu.user!.nickname,
-                    );
-                    if (nickname)
-                      void request("CHANGE_NICKNAME", {
-                        user_id: menu.user!.id,
-                        nickname,
-                      }).catch(report);
-                  }}
-                >
-                  Changer le pseudo
+                    : "Rendre muet pour tous"}
                 </button>
               )}
-              <p className="fingerprint" title={menu.user.fingerprint}>
-                {menu.user.fingerprint}
-              </p>
-              <button
-                onClick={() =>
-                  void navigator.clipboard
-                    .writeText(menu.user!.fingerprint)
-                    .catch(report)
-                }
-              >
-                Copier l’identité
-              </button>
+              {s.permissions["user.change_others_nickname"] &&
+                menu.user.id !== s.self_id && (
+                  <button
+                    onClick={async () => {
+                      const name = await promptDialog(
+                        "Nouveau pseudonyme",
+                        menu.user!.nickname,
+                      );
+                      if (name)
+                        void request("CHANGE_NICKNAME", {
+                          user_id: menu.user!.id,
+                          nickname: name,
+                        }).catch(report);
+                      setMenu(null);
+                    }}
+                  >
+                    <Icon name="edit" />
+                    Modifier le pseudo
+                  </button>
+                )}
+              <hr />
+              {menuPermissions["user.kick"] && (
+                <button
+                  className="danger-text"
+                  onClick={() => void moderation(menu.user!)}
+                >
+                  <Icon name="logout" />
+                  Expulser du serveur
+                </button>
+              )}
+              {menuPermissions["user.ban"] && (
+                <button
+                  className="danger-text"
+                  onClick={() => void moderation(menu.user!, true)}
+                >
+                  <Icon name="ban" />
+                  Bannir
+                </button>
+              )}
             </>
+          ) : (
+            menu.channel && (
+              <>
+                <div className="context-profile">
+                  <Icon name="channel" />
+                  <strong>{menu.channel.name}</strong>
+                </div>
+                <button
+                  disabled={
+                    !menuPermissions["channel.join"] ||
+                    !menuPermissions["channel.move_self"]
+                  }
+                  onClick={() => void join(menu.channel!)}
+                >
+                  <Icon name="connect" />
+                  Rejoindre le salon
+                </button>
+                {menuPermissions["channel.create"] && (
+                  <button
+                    onClick={() => {
+                      setEditor({ parent: menu.channel!.id });
+                      setMenu(null);
+                    }}
+                  >
+                    <Icon name="plus" />
+                    Créer un sous-salon
+                  </button>
+                )}
+                {menuPermissions["channel.edit"] && (
+                  <button
+                    onClick={() => {
+                      setEditor({ channel: menu.channel! });
+                      setMenu(null);
+                    }}
+                  >
+                    <Icon name="edit" />
+                    Modifier le salon
+                  </button>
+                )}
+                {menuPermissions["permissions.edit"] && (
+                  <button
+                    onClick={() => {
+                      showAdmin(true);
+                      setMenu(null);
+                    }}
+                  >
+                    <Icon name="shield" />
+                    Permissions du salon
+                  </button>
+                )}
+                {menuPermissions["channel.delete"] && (
+                  <>
+                    <hr />
+                    <button
+                      className="danger-text"
+                      onClick={async () => {
+                        const id = menu.channel!.id;
+                        if (
+                          await confirmDialog(
+                            "Supprimer ce salon ? Cette action est définitive.",
+                          )
+                        )
+                          void request("DELETE_CHANNEL", { id }).catch(report);
+                        setMenu(null);
+                      }}
+                    >
+                      <Icon name="trash" />
+                      Supprimer le salon
+                    </button>
+                  </>
+                )}
+              </>
+            )
           )}
-        </div>
+        </ContextMenu>
       )}
+      <ActionDialog />
       <Updater />
     </main>
   );
