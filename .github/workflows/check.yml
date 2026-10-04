@@ -22,7 +22,7 @@ jobs:
         with:
           node-version: '22'
       - run: ./scripts/download-livekit.sh
-      - run: npm ci && npm --prefix client ci && npx playwright install --with-deps chromium && npm run test:media
+      - run: npm ci && npm --prefix client ci && npx playwright install --with-deps chromium && npm run test:media && npm run test:ui
       - run: bash -n scripts/*.sh
       - run: python3 scripts/generate-protocol.py --check
   client:
