@@ -6,7 +6,7 @@
   "stale_token_status": 403,
   "stats": [
     {
-      "received": 1396,
+      "received": 1472,
       "opus": true,
       "codecs": [
         "audio/opus"
@@ -15,7 +15,7 @@
       "errors": ""
     },
     {
-      "received": 1653,
+      "received": 1675,
       "opus": true,
       "codecs": [
         "audio/opus"
