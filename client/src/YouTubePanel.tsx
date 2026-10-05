@@ -582,6 +582,23 @@ export function ChannelActivities({ channelId }: { channelId: string }) {
     y = useYouTube(),
     screens = useScreens();
   const menu = useRef<HTMLDetailsElement>(null);
+  const activityWindow = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const panel = activityWindow.current;
+    const details = panel?.closest<HTMLElement>(".channel-details");
+    if (!panel || !details) return;
+    const observer = new ResizeObserver(([entry]) =>
+      details.style.setProperty(
+        "--activity-width",
+        `${entry.contentRect.width + 14}px`,
+      ),
+    );
+    observer.observe(panel);
+    return () => {
+      observer.disconnect();
+      details.style.removeProperty("--activity-width");
+    };
+  }, []);
   const joined =
     s.users.find((u) => u.id === s.self_id)?.channel_id === channelId;
   const showYouTube =
@@ -634,6 +651,7 @@ export function ChannelActivities({ channelId }: { channelId: string }) {
         </button>
       )}
       <aside
+        ref={activityWindow}
         className="activity-window"
         aria-label="Activité du salon"
         hidden={

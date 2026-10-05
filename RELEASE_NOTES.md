@@ -1,9 +1,6 @@
-Licra 0.3.1 — Chat principal, activités séparées et pause YouTube
+Licra 0.3.2 — fenêtres d’activités redimensionnables
 
-- Le chat du salon occupe la zone centrale, avec les messages et la saisie visibles sans parcourir les panneaux média.
-- Le menu « Activités » ouvre YouTube ou les partages dans une fenêtre dédiée. Réduire cette fenêtre ferme le lecteur local ; la réouverture rejoint la position actuelle du salon. Le chat reste accessible.
-- Pause et lecture depuis les boutons du lecteur YouTube transmettent maintenant une commande autorisée au serveur. La synchronisation périodique ne relance plus une pause volontaire autorisée.
-- Plein écran vidéo : aucun cadre ni bandeau de l’application ne réserve de place. L’image remplit l’écran par défaut ; « Tout afficher » conserve l’image entière si les formats diffèrent, et « Remplir l’écran » revient au mode sans bandes. Le remplissage peut rogner les bords d’une source de format différent, sans déformation.
-- Voix, chat, MP, identité, permissions, bitrate et AppData conservés. Compatible avec le serveur 0.3.0 déjà installé ; aucun redémarrage serveur requis pour ces corrections client.
-
-Les bandes présentes dans la source capturée elle-même ne peuvent pas être supprimées sans recadrer cette source. L’indicateur de capture WebView2 reste géré par Windows. La lecture et la synchronisation d’un vrai flux YouTube sur des postes Windows restent à confirmer ; les vérifications automatisées de commandes utilisent le lecteur simulé de l’API officielle.
+- Les panneaux YouTube et partage d’écran se redimensionnent en largeur et en hauteur avec la poignée native de la fenêtre. Leur taille reste bornée à l’application, à sa barre supérieure et à sa barre de contrôle inférieure.
+- Le contenu continue de défiler dans le panneau quand sa taille diminue. Le lecteur YouTube conserve sa taille minimale de lecture.
+- Licra ne télécharge ni n’enregistre les fichiers des vidéos YouTube sur son serveur. Chaque client lit directement la vidéo depuis YouTube. La base de données garde uniquement l’état de l’activité, l’identifiant vidéo, la position et les identifiants des vidéos de la file/historique. Changer de vidéo remplace cet état et le lecteur côté client ; aucun fichier vidéo serveur n’existe à supprimer.
+- Le serveur 0.3.0 reste compatible ; aucun redémarrage ni nouveau port n’est nécessaire. Voix, partage écran, chat, identité et AppData conservés.
