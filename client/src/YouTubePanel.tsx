@@ -10,6 +10,7 @@ import {
 } from "./youtube";
 import { driftNeedsSeek } from "./youtube-sync.mjs";
 import { useFullscreen } from "./useFullscreen";
+import { Icon } from "./ui";
 let api: Promise<any> | undefined;
 function loadAPI(): Promise<any> {
   const w = window as any;
@@ -94,14 +95,22 @@ export function YouTubePanel({ channelId }: { channelId: string }) {
       loaded = "",
       lastSeek = 0,
       revision = -1,
-      autoplayBlocked = false;
+      autoplayBlocked = false,
+      commandState: number | null = null,
+      playerRequest = false;
     let yt: any,
       clock: ReturnType<typeof setInterval> | undefined,
       metadataRevision = -1;
     const apply = (force = false) => {
       const state = useYouTube.getState(),
         current = state.activity;
-      if (!alive || !ready || !current || current.channel_id !== channelId)
+      if (
+        !alive ||
+        !ready ||
+        playerRequest ||
+        !current ||
+        current.channel_id !== channelId
+      )
         return;
       const expected = youtubePosition(current);
       if (loaded !== current.video_id) {
@@ -112,6 +121,7 @@ export function YouTubePanel({ channelId }: { channelId: string }) {
         autoplayBlocked = false;
         setBlocked(false);
         setError("");
+        commandState = current.state === "PLAYING" ? 1 : 5;
         if (current.state === "PLAYING")
           yt.loadVideoById({ videoId: loaded, startSeconds: expected });
         else yt.cueVideoById({ videoId: loaded, startSeconds: expected });
@@ -133,15 +143,20 @@ export function YouTubePanel({ channelId }: { channelId: string }) {
         yt.seekTo(expected, true);
       }
       const status = yt.getPlayerState();
-      if (current.state === "PAUSED" && status !== 2) yt.pauseVideo();
+      if (current.state === "PAUSED" && status !== 2 && status !== 5) {
+        commandState = 2;
+        yt.pauseVideo();
+      }
       if (
         current.state === "PLAYING" &&
         !autoplayBlocked &&
         status !== 1 &&
         status !== 3 &&
         status !== 0
-      )
+      ) {
+        commandState = 1;
         yt.playVideo();
+      }
       const length = yt.getDuration();
       setDuration(length > 0 ? length : current.duration);
       setPosition(actual);
@@ -217,7 +232,38 @@ export function YouTubePanel({ channelId }: { channelId: string }) {
               if (!alive || !ready) return;
               const current = useYouTube.getState().activity;
               if (!current || current.video_id !== loaded) return;
-              if (event.data === 1) setBlocked(false);
+              if (event.data === 1) {
+                autoplayBlocked = false;
+                setBlocked(false);
+              }
+              // Player API callbacks also follow our own commands. Only an
+              // unsolicited play/pause becomes a server-authorized room action.
+              if (commandState !== null) {
+                if (event.data === commandState) commandState = null;
+                return;
+              }
+              if (playerRequest) return;
+              const kind =
+                event.data === 2 && current.state === "PLAYING"
+                  ? "YOUTUBE_PAUSE"
+                  : event.data === 1 && current.state === "PAUSED"
+                    ? "YOUTUBE_PLAY"
+                    : null;
+              if (
+                kind &&
+                useStore.getState().channel_permissions[channelId]?.[
+                  "youtube.control"
+                ]
+              ) {
+                playerRequest = true;
+                void youtubeAction(kind)
+                  .catch(report)
+                  .finally(() => {
+                    playerRequest = false;
+                    if (alive) apply();
+                  });
+                return;
+              }
               if (
                 event.data === 0 &&
                 current.state === "PLAYING" &&
@@ -535,44 +581,89 @@ export function ChannelActivities({ channelId }: { channelId: string }) {
   const s = useStore(),
     y = useYouTube(),
     screens = useScreens();
+  const menu = useRef<HTMLDetailsElement>(null);
   const joined =
     s.users.find((u) => u.id === s.self_id)?.channel_id === channelId;
   const showYouTube =
     joined &&
     s.youtube?.enabled &&
     s.channel_permissions[channelId]?.["youtube.view"];
-  const shared = screens.shares.some((share) => share.channel_id === channelId);
+  const shared = screens.shares.filter(
+    (share) => share.channel_id === channelId,
+  ).length;
   const active =
     showYouTube &&
     y.activity?.channel_id === channelId &&
     y.activity.state !== "STOPPED";
-  if (!showYouTube) return <ScreenPanel channelId={channelId} />;
+  function open(preferred: "youtube" | "screens") {
+    useYouTube.setState({ preferred });
+    if (menu.current) menu.current.open = false;
+  }
   return (
-    <>
-      <div
-        className="activity-tabs"
-        role="group"
-        aria-label="Activité principale"
-      >
+    <div className="channel-activities">
+      <details className="activity-menu" ref={menu}>
+        <summary>
+          <Icon name="activity" /> Activités <Icon name="chevron" />
+        </summary>
+        <div className="activity-menu-items">
+          {showYouTube && (
+            <button onClick={() => open("youtube")}>
+              <Icon name="activity" /> YouTube{" "}
+              <small>{active ? "En cours" : "Regarder ensemble"}</small>
+            </button>
+          )}
+          {s.screen?.enabled && (
+            <button onClick={() => open("screens")}>
+              <Icon name="screen" /> Partages d’écran{" "}
+              <small>
+                {shared ? `${shared} en cours` : "Partager ou regarder"}
+              </small>
+            </button>
+          )}
+        </div>
+      </details>
+      {(active || shared > 0) && (
         <button
-          aria-pressed={y.preferred === "youtube"}
-          onClick={() => useYouTube.setState({ preferred: "youtube" })}
+          className="activity-status"
+          onClick={() => open(active ? "youtube" : "screens")}
         >
-          YouTube {active ? "· en cours" : ""}
+          <span className="status-dot connected" />
+          {active
+            ? "YouTube en cours"
+            : `${shared} partage${shared > 1 ? "s" : ""} en cours`}
         </button>
-        <button
-          aria-pressed={y.preferred === "screens"}
-          onClick={() => useYouTube.setState({ preferred: "screens" })}
-        >
-          Partages d’écran {shared ? "· en cours" : ""}
-        </button>
-      </div>
-      {y.preferred === "youtube" && (
-        <YouTubePanel key={channelId} channelId={channelId} />
       )}
-      <div hidden={!!active && y.preferred === "youtube"}>
-        <ScreenPanel channelId={channelId} />
-      </div>
-    </>
+      <aside
+        className="activity-window"
+        aria-label="Activité du salon"
+        hidden={
+          y.preferred === "chat" || (y.preferred === "youtube" && !showYouTube)
+        }
+      >
+        <header className="activity-window-header">
+          <strong>
+            {y.preferred === "youtube"
+              ? "Regarder ensemble"
+              : "Partages d’écran"}
+          </strong>
+          <button
+            aria-label="Réduire l’activité"
+            onClick={() => useYouTube.setState({ preferred: "chat" })}
+          >
+            <Icon name="close" />
+          </button>
+        </header>
+        <div className="activity-window-content">
+          {showYouTube && y.preferred === "youtube" && (
+            <div hidden={y.preferred !== "youtube"}>
+              <YouTubePanel key={channelId} channelId={channelId} />
+            </div>
+          )}
+          <div hidden={y.preferred !== "screens"}>
+            <ScreenPanel channelId={channelId} />
+          </div>
+        </div>
+      </aside>
+    </div>
   );
 }

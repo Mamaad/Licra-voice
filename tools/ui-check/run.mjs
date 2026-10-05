@@ -275,7 +275,7 @@ try {
       window.ui.store.getState().channels.find((c) => c.name === "Chill").id,
   );
   await page
-    .locator(".member-list .user-row")
+    .locator(".channel-tree .user-row")
     .filter({ hasText: "Alice" })
     .dragTo(namedRow("Chill"));
   await page.waitForFunction(
@@ -402,7 +402,7 @@ try {
   await page.keyboard.press("Escape");
   await page.screenshot({ path: join(out, "channel-1440.png") });
   await page
-    .locator(".member-list .user-row")
+    .locator(".channel-tree .user-row")
     .filter({ hasText: "Alice" })
     .click({ button: "right" });
   await page.locator(".context-volume input").fill("150");
@@ -514,7 +514,7 @@ try {
     0,
   );
   await guest
-    .locator(".member-list .user-row")
+    .locator(".channel-tree .user-row")
     .filter({ hasText: "Thomas" })
     .click({ button: "right" });
   assert.equal(
@@ -644,6 +644,19 @@ try {
     (id) => window.ui.store.getState().set({ selected: id }),
     channel,
   );
+  // Chat is primary, inactive media panels are hidden until opened from the menu.
+  assert.equal(await page.locator(".activity-window").isVisible(), false);
+  assert.equal(
+    await page.getByRole("textbox", { name: "Message au salon" }).isVisible(),
+    true,
+  );
+  for (const peer of [page, guest]) {
+    await peer.locator(".activity-menu summary").click();
+    await peer
+      .locator(".activity-menu-items button")
+      .filter({ hasText: "Partages d’écran" })
+      .click();
+  }
   await page.getByRole("button", { name: "Partager l’écran" }).click();
   await page.waitForFunction(
     () =>
@@ -727,6 +740,38 @@ try {
     .getByRole("button", { name: "Plein écran" })
     .click();
   await page.waitForFunction(() => !!document.fullscreenElement);
+  const viewportVideo = await page
+    .locator(".screen-tile:fullscreen video")
+    .evaluate((el) => {
+      const b = el.getBoundingClientRect();
+      return {
+        x: b.x,
+        y: b.y,
+        width: b.width,
+        height: b.height,
+        vw: innerWidth,
+        vh: innerHeight,
+        fit: getComputedStyle(el).objectFit,
+      };
+    });
+  assert.equal(viewportVideo.x, 0);
+  assert.equal(viewportVideo.y, 0);
+  assert.equal(viewportVideo.width, viewportVideo.vw);
+  assert.equal(viewportVideo.height, viewportVideo.vh);
+  assert.equal(viewportVideo.fit, "cover");
+  await page
+    .getByRole("button", { name: "Tout afficher", exact: true })
+    .click();
+  assert.equal(
+    await page
+      .locator(".screen-tile:fullscreen video")
+      .evaluate((el) => getComputedStyle(el).objectFit),
+    "contain",
+  );
+  await page
+    .getByRole("button", { name: "Remplir l’écran", exact: true })
+    .click();
+
   await page
     .getByRole("button", { name: "Quitter le plein écran", exact: true })
     .click();
@@ -783,12 +828,31 @@ try {
     });
 
   for (const viewer of viewers) {
-    await viewer.locator(".screen-tile video").first().scrollIntoViewIfNeeded();
-    await viewer.waitForFunction(() =>
-      [...document.querySelectorAll(".screen-tile video")].every(
-        (v) => v.readyState >= 2 && v.videoWidth > 0,
-      ),
-    );
+    await viewer.locator(".activity-menu summary").click();
+    await viewer
+      .locator(".activity-menu-items button")
+      .filter({ hasText: "Partages d’écran" })
+      .click();
+    // LiveKit pauses invisible tiles. Scroll each tile inside the media window
+    // before requiring a decoded frame from that individual subscription.
+    for (const video of await viewer.locator(".screen-tile video").all()) {
+      await video.scrollIntoViewIfNeeded();
+      await video.evaluate(
+        (el) =>
+          new Promise((resolve, reject) => {
+            const deadline = performance.now() + 60000;
+            const check = () => {
+              if (el.readyState >= 2 && el.videoWidth > 0) return resolve(true);
+              if (performance.now() > deadline)
+                return reject(
+                  new Error("Visible screen tile has no decoded frame"),
+                );
+              setTimeout(check, 100);
+            };
+            check();
+          }),
+      );
+    }
   }
   await page.waitForFunction(async () => {
     const d = await window.ui.screen.screenDiagnostics();

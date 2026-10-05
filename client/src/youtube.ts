@@ -11,7 +11,7 @@ export const useYouTube = create<{
   drift: number | null;
   volume: number;
   muted: boolean;
-  preferred: "youtube" | "screens";
+  preferred: "chat" | "youtube" | "screens";
   error: string;
 }>(() => ({
   activity: null,
@@ -20,7 +20,7 @@ export const useYouTube = create<{
   drift: null,
   volume: Number(localStorage.getItem("youtubeVolume") ?? 60),
   muted: localStorage.getItem("youtubeMuted") === "true",
-  preferred: "youtube",
+  preferred: "chat",
   error: "",
 }));
 let samples: { rtt: number; offset: number; received: number }[] = [];
@@ -57,7 +57,7 @@ export function youtubeEvent(type: string, p: any) {
       activity: p.youtube_activity ?? null,
       error: "",
       drift: null,
-      preferred: "youtube",
+      preferred: "chat",
     });
     return;
   }
@@ -70,7 +70,15 @@ export function youtubeEvent(type: string, p: any) {
     p.activity.revision < previous.revision
   )
     return;
-  useYouTube.setState({ activity: p.activity ?? null, error: "" });
+  useYouTube.setState({
+    activity: p.activity ?? null,
+    error: "",
+    ...(p.activity?.video_id &&
+    p.activity.state !== "STOPPED" &&
+    (!previous?.video_id || previous.state === "STOPPED")
+      ? { preferred: "youtube" as const }
+      : {}),
+  });
 }
 export async function syncYouTube() {
   const s = useStore.getState();
@@ -89,7 +97,7 @@ export async function syncYouTube() {
   if (channel === current) return;
   channel = current;
   const g = ++generation;
-  useYouTube.setState({ activity: null, drift: null, preferred: "youtube" });
+  useYouTube.setState({ activity: null, drift: null, preferred: "chat" });
   try {
     const p = await request("YOUTUBE_GET");
     if (g === generation) youtubeEvent("YOUTUBE_STATE", p);

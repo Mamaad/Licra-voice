@@ -46,7 +46,10 @@ export async function installPlayerFixture(page, blocked = false) {
         cueVideoById(v) {
           this.id = v.videoId;
           this.position = v.startSeconds;
-          this.state = 2;
+          this.state = 5;
+          queueMicrotask(() =>
+            this.options.events.onStateChange({ target: this, data: 5 }),
+          );
         }
         playVideo() {
           if (window.ytBlock) {
@@ -64,6 +67,9 @@ export async function installPlayerFixture(page, blocked = false) {
         pauseVideo() {
           this.position = this.getCurrentTime() - window.ytDrift;
           this.state = 2;
+          queueMicrotask(() =>
+            this.options.events.onStateChange({ target: this, data: 2 }),
+          );
         }
         seekTo(v) {
           this.position = v;
@@ -129,6 +135,11 @@ export async function checkYouTube({
   await extra.waitForFunction(() => !!window.ui);
   await installPlayerFixture(extra);
   peers.push(extra);
+  await page.locator(".activity-menu summary").click();
+  await page
+    .locator(".activity-menu-items button")
+    .filter({ hasText: "YouTube" })
+    .click();
   await page
     .getByRole("textbox", { name: "Lien YouTube" })
     .fill("https://youtu.be/M7lc1UVf-VE?si=fixture");
@@ -160,6 +171,10 @@ export async function checkYouTube({
       name: "Cliquez pour démarrer la lecture synchronisée",
     })
     .waitFor();
+  assert(
+    (await page.locator(".chat-panel").boundingBox()).width >= 300,
+    "Chat remains usable next to the media window",
+  );
   await page.evaluate(() =>
     window.ui.youtube.youtubeAction("YOUTUBE_SEEK", { position: 60 }),
   );
@@ -179,16 +194,38 @@ export async function checkYouTube({
     guest.evaluate(() => window.ui.youtube.youtubeAction("YOUTUBE_PAUSE")),
     /Permission refusée/,
   );
-  await page.evaluate(() => window.ui.youtube.youtubeAction("YOUTUBE_PAUSE"));
+  // Click-equivalent native IFrame callback: the periodic sync must not undo it.
+  await page.evaluate(() => window.ytInstances.at(-1).pauseVideo());
   for (const peer of peers)
     await peer.waitForFunction(
       () =>
         window.ui.youtube.useYouTube.getState().activity?.state === "PAUSED" &&
         window.ytInstances.at(-1)?.state === 2,
     );
-  await page.evaluate(() => window.ui.youtube.youtubeAction("YOUTUBE_PLAY"));
+  await page.waitForTimeout(2200);
+  assert.equal(await page.evaluate(() => window.ytInstances.at(-1).state), 2);
+  await page.evaluate(() => window.ytInstances.at(-1).playVideo());
   for (const peer of peers)
     await peer.waitForFunction(() => window.ytInstances.at(-1)?.state === 1);
+  // Reducing closes the local player; reopening rejoins the running room timeline.
+  await page.getByRole("button", { name: "Réduire l’activité" }).click();
+  assert.equal(await page.locator(".activity-window").isVisible(), false);
+  assert.equal(
+    await page.evaluate(() => window.ytInstances.at(-1).destroyed),
+    true,
+  );
+  await page
+    .getByRole("textbox", { name: "Message au salon" })
+    .fill("Chat principal pendant lecture réduite");
+  await page.getByRole("textbox", { name: "Message au salon" }).press("Enter");
+  await guest
+    .getByText("Chat principal pendant lecture réduite", { exact: true })
+    .waitFor();
+  await page.locator(".activity-menu summary").click();
+  await page
+    .locator(".activity-menu-items button")
+    .filter({ hasText: "YouTube" })
+    .click();
   await page
     .getByRole("slider", { name: "Volume YouTube", exact: true })
     .fill("23");
@@ -270,6 +307,11 @@ export async function checkYouTube({
     () =>
       window.ui.youtube.useYouTube.getState().activity?.video_id ===
       "M7lc1UVf-VE",
+  );
+  // Video changes reset duration; wait for the authorized metadata revision
+  // before issuing the next action in this deterministic scenario.
+  await page.waitForFunction(
+    () => window.ui.youtube.useYouTube.getState().activity?.duration === 360,
   );
   await page.evaluate(() =>
     window.ui.youtube.youtubeAction("YOUTUBE_SEEK", { position: 100 }),

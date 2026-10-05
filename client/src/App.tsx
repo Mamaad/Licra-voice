@@ -344,7 +344,7 @@ export function App() {
               onMove={move}
               onCreate={(parent) => setEditor({ parent })}
             />
-            <article className="channel-content">
+            <article className="channel-content room-conversation">
               {selected ? (
                 <>
                   <div className="channel-banner">
@@ -400,40 +400,50 @@ export function App() {
                         )}
                       </div>
                     </section>
-                    <div className="channel-stat-strip">
-                      <div>
-                        <Icon name="users" />
-                        <span>
-                          Membres
-                          <strong>
-                            {
-                              s.users.filter(
-                                (u) => u.channel_id === selected.id,
-                              ).length
-                            }
-                            {selected.max_users
-                              ? ` / ${selected.max_users}`
-                              : ""}
-                          </strong>
-                        </span>
-                      </div>
-                      <div>
-                        <Icon name="activity" />
-                        <span>
-                          Profil audio
-                          <strong>{profiles[selected.audio_profile]}</strong>
-                          <small>48 kHz · Opus mono</small>
-                        </span>
-                      </div>
-                      <div>
-                        <Icon name="shield" />
-                        <span>
-                          Conversation<strong>WebRTC chiffré</strong>
-                          <small>Serveur auto-hébergé</small>
-                        </span>
-                      </div>
+                    <div className="room-toolbar">
+                      <ChannelActivities
+                        key={selected.id}
+                        channelId={selected.id}
+                      />
+                      <details className="room-information">
+                        <summary>Informations du salon</summary>
+                        <div className="channel-stat-strip">
+                          <div>
+                            <Icon name="users" />
+                            <span>
+                              Membres
+                              <strong>
+                                {
+                                  s.users.filter(
+                                    (u) => u.channel_id === selected.id,
+                                  ).length
+                                }
+                                {selected.max_users
+                                  ? ` / ${selected.max_users}`
+                                  : ""}
+                              </strong>
+                            </span>
+                          </div>
+                          <div>
+                            <Icon name="activity" />
+                            <span>
+                              Profil audio
+                              <strong>
+                                {profiles[selected.audio_profile]}
+                              </strong>
+                              <small>48 kHz · Opus mono</small>
+                            </span>
+                          </div>
+                          <div>
+                            <Icon name="shield" />
+                            <span>
+                              Conversation<strong>WebRTC chiffré</strong>
+                              <small>Serveur auto-hébergé</small>
+                            </span>
+                          </div>
+                        </div>
+                      </details>
                     </div>
-                    <ChannelActivities channelId={selected.id} />
                     <div className="conversation-layout">
                       <ChatPanel
                         key={chat.privatePeer?.fingerprint ?? selected.id}

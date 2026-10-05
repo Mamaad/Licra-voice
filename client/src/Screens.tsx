@@ -23,6 +23,7 @@ function ScreenTile({
   onError: (s: string) => void;
 }) {
   const fullscreen = useFullscreen();
+  const [fit, setFit] = useState(false);
   const element = useRef<HTMLVideoElement>(null),
     s = useStore();
   useEffect(() => {
@@ -41,7 +42,7 @@ function ScreenTile({
     ] ?? {};
   return (
     <div
-      className={`screen-tile ${focused ? "focused" : ""}`}
+      className={`screen-tile ${focused ? "focused" : ""} ${fit ? "fit-video" : ""}`}
       ref={fullscreen.container}
       onDoubleClick={onFocus}
     >
@@ -60,6 +61,11 @@ function ScreenTile({
         >
           {fullscreen.active ? "Quitter le plein écran" : "Plein écran"}
         </button>
+        {fullscreen.active && (
+          <button onClick={() => setFit(!fit)}>
+            {fit ? "Remplir l’écran" : "Tout afficher"}
+          </button>
+        )}
         {!item.local && p["screen.stop_others"] && (
           <button
             onClick={() =>
